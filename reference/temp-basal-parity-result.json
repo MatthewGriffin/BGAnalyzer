@@ -1,0 +1,11 @@
+{
+  "reference_commit": "1393357107a2b27ba153df31d64e745efd771ef2",
+  "component": "AutotuneIob temporary-basal convertToBoluses section",
+  "cases": 360,
+  "contributions_compared": 960,
+  "maximum_absolute_amount_difference": 0.0,
+  "timestamp_differences": 0,
+  "scope": "One already-resolved segment; not splitting, profile resolution, pump confirmation, cancellation, total IOB or clinical validation.",
+  "python_sha256": "e2dde85c0fc4d6c24370c477de1f89c097ee43b6c40e0ee8e2c782fbe0b5908e",
+  "kotlin_section_sha256": "47ce471baeebe83375f6e633aacdb2a87e49876efb8e3b99b12101cb9788984e"
+}

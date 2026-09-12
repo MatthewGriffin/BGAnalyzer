@@ -1,0 +1,33 @@
+{
+  "status": "PENDING_EXTERNAL_REVIEW",
+  "policy_version": "policy-v1",
+  "policy_hash": "SCaffoldNotYetCalculated - requires approved policy JSON",
+  "reviewer_name": "<required: qualified diabetes clinician/domain team member>",
+  "reviewer_role": "<required: e.g., endocrinologist / diabetes specialist / AAPS clinical reviewer>",
+  "review_date_ms": null,
+  "approved_for_contexts": ["adult_t1d_novorapid_omnipod_aaps34"],
+  "limitations_noted": [
+    "Engineering policy only; not validated for clinical use.",
+    "Dynamic ISF (DynISF) excluded from v1 tuning.",
+    "Multi-segment IC/ISF not independently fitted; scalar estimates only.",
+    "No clinical recommendation enabled until this audit is completed.",
+    "Requires independent clinician sign-off per IMPLEMENTATION_PLAN.md §11 / G3."
+  ],
+  "decision": "pending",
+  "evidence_ids": [],
+  "required_checklist": [
+    "Review policy-v1 bounds by qualified clinician for adult T1D",
+    "Confirm supported context (adult_t1d_novorapid_omnipod_aaps34)",
+    "Confirm insulin plugin list and peak/DIA ranges",
+    "Confirm max change caps (basal ±0.5 U/hr / 20%, IC ±5 g/U / 20%, ISF ±30 mg/dL/U / 20%)",
+    "Confirm quantization increments match pump",
+    "Review leave-one-day-out stability and low-glucose contradiction (<54 mg/dL blocks increases)",
+    "Sign off NO_VALIDATED_POLICY → VALIDATED transition"
+  ],
+  "code_state": {
+    "_has_validated_policy": false,
+    "numerical_release_policy_check": "blocked",
+    "eligibility_status_without_review": "VALIDATION_UNAVAILABLE"
+  },
+  "note": "This scaffold exists to document that the clinical review has not been completed. No numerical recommendations will be released until this file is updated with reviewer details, a computed policy hash of the approved JSON, a decision of 'approved', and an evidence_ids list linking to representative synthetic/deidentified validation cases."
+}

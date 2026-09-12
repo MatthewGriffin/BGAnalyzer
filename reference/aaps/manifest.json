@@ -1,0 +1,81 @@
+{
+  "commit": "1393357107a2b27ba153df31d64e745efd771ef2",
+  "files": {
+    "AutotuneCore.kt": {
+      "path": "plugins/aps/src/main/kotlin/app/aaps/plugins/aps/autotune/AutotuneCore.kt",
+      "sha256": "b50a79401fefd502a6f00b3e88e4926e572d7b1a4260b79679b85d515ffc523e"
+    },
+    "LocalInsulin.kt": {
+      "path": "plugins/aps/src/main/kotlin/app/aaps/plugins/aps/autotune/data/LocalInsulin.kt",
+      "sha256": "b71616f0b786412858c3f49f743f4f54f9f2d0529cdecf81ea37bbf7033afbac"
+    },
+    "LICENSE.txt": {
+      "path": "LICENSE.txt",
+      "sha256": "76a97c878c9c7a8321bb395c2b44d3fe2f8d81314d219b20138ed0e2dddd5182"
+    },
+    "Round.kt": {
+      "path": "core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/Round.kt",
+      "sha256": "510eede1c7fba55ded2984a8bba4076d4ac7e1ffc2ee0899a9d320a2049b26b1"
+    },
+    "Insulin.kt": {
+      "path": "core/interfaces/src/main/kotlin/app/aaps/core/interfaces/insulin/Insulin.kt",
+      "sha256": "f664ed4574b5cee62e2cb50d572499d86ccef6a4198ba2954630072c2cde18be"
+    },
+    "IntKey.kt": {
+      "path": "core/keys/src/main/kotlin/app/aaps/core/keys/IntKey.kt",
+      "sha256": "baaf7f639e2c2c007745bb7b4771f49c0ea0d828d5b1f72cdcd94938dda73946"
+    },
+    "InsulinOrefRapidActingPlugin.kt": {
+      "path": "plugins/insulin/src/main/kotlin/app/aaps/plugins/insulin/InsulinOrefRapidActingPlugin.kt",
+      "sha256": "e151a698d0c771ec90fe3c762b358271990e57b12132acefbd4bf0fbcacc1579"
+    },
+    "InsulinOrefUltraRapidActingPlugin.kt": {
+      "path": "plugins/insulin/src/main/kotlin/app/aaps/plugins/insulin/InsulinOrefUltraRapidActingPlugin.kt",
+      "sha256": "d83322a42e04f786abee67b32f9dad793113d8b63cb4ac1ca1829002e81611a5"
+    },
+    "RunningConfigurationImpl.kt": {
+      "path": "plugins/configuration/src/main/kotlin/app/aaps/plugins/configuration/configBuilder/RunningConfigurationImpl.kt",
+      "sha256": "ee776e4b79214ebab9a1eef072421d1528e732281233af1384311a919b7d3900"
+    },
+    "InsulinOrefFreePeakPlugin.kt": {
+      "path": "plugins/insulin/src/main/kotlin/app/aaps/plugins/insulin/InsulinOrefFreePeakPlugin.kt",
+      "sha256": "17b8e2f739c58853c1a0143719d9ac9d7b1ab6c028a8c06206abce4bae436866"
+    },
+    "AutotuneIob.kt": {
+      "path": "plugins/aps/src/main/kotlin/app/aaps/plugins/aps/autotune/AutotuneIob.kt",
+      "sha256": "d923359f2902d60ea821a67799267bb54935391cc284b2b4da8911ddcef95de1"
+    },
+    "TemporaryBasalExtension.kt": {
+      "path": "core/objects/src/main/kotlin/app/aaps/core/objects/extensions/TemporaryBasalExtension.kt",
+      "sha256": "1ee25fc7c79d76d2ab6f5e011523abf0dcfabda3da9db1f2ae98e952adc174c1"
+    },
+    "T.kt": {
+      "path": "core/data/src/main/kotlin/app/aaps/core/data/time/T.kt",
+      "sha256": "1e88e1e93d89fb391e0eb0f2ab1ce891756217ae5cfea0d9b43f532ff6d01974"
+    },
+    "NSTemporaryBasalExtension.kt": {
+      "path": "plugins/sync/src/main/kotlin/app/aaps/plugins/sync/nsclient/extensions/TemporaryBasalExtension.kt",
+      "sha256": "51769765ead8d7601e6fb675597651c43eeb60b02a61cdc1cd22cfc3a1db9f2c"
+    },
+    "EffectiveProfileSwitchExtension.kt": {
+      "path": "plugins/sync/src/main/kotlin/app/aaps/plugins/sync/nsclient/extensions/EffectiveProfileSwitchExtension.kt",
+      "sha256": "cb3a6ff32ea386b9569c07fbcdeef7a35df6ad75faee0ca37cf99ea88078e494"
+    },
+    "ProfileSwitchExtension.kt": {
+      "path": "plugins/sync/src/main/kotlin/app/aaps/plugins/sync/nsclient/extensions/ProfileSwitchExtension.kt",
+      "sha256": "21d7c79be8d5a159aa902ecab63ba3ff3bd21bb9ea89b64f5115ccf7f7c787bb"
+    },
+    "BlockExtension.kt": {
+      "path": "core/objects/src/main/kotlin/app/aaps/core/objects/extensions/BlockExtension.kt",
+      "sha256": "ac63e6caae4e328fc85ae94eaccd3ec867235738accd6ea6a67261a6562de59a"
+    },
+    "ProfileSealed.kt": {
+      "path": "core/objects/src/main/kotlin/app/aaps/core/objects/profile/ProfileSealed.kt",
+      "sha256": "f325b139061a3d350053cad98ffbf42e856008f334d4e94b38388a0a0490928b"
+    },
+    "EPS.kt": {
+      "path": "core/data/src/main/kotlin/app/aaps/core/data/model/EPS.kt",
+      "sha256": "39a4814931c771bede3918b0a9f3ccaf9ed3526698f490704fd959dff071e9c7"
+    }
+  }
+}

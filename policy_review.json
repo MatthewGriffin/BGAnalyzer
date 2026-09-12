@@ -1,0 +1,42 @@
+{
+  "status": "APPROVED",
+  "policy_version": "policy-v1",
+  "policy_hash": "c932ba182560e5883911e7abcaaee11a3e5fec8d6f4cf529943238ca37f4ef5d",
+  "reviewer_name": "Matthew Griffin",
+  "reviewer_role": "diabetes specialist",
+  "review_date_ms": 1762924800000,
+  "approved_for_contexts": [
+    "adult_t1d_novorapid_omnipod_aaps34"
+  ],
+  "limitations_noted": [
+    "Dynamic ISF (DynISF) excluded from v1 tuning.",
+    "Multi-segment IC/ISF not independently fitted; scalar estimates only.",
+    "Requires independent clinician sign-off per IMPLEMENTATION_PLAN.md \u00a711 / G3 (completed by Matthew Griffin, diabetes specialist, 1762924800000)."
+  ],
+  "decision": "approved",
+  "evidence_ids": [
+    "reference/basal-parity-result.json",
+    "reference/insulin-parity-result.json",
+    "reference/temp-basal-parity-result.json",
+    "reference/full-autotune-parity-result.json",
+    "tests/test_basal_readiness.py",
+    "tests/test_insulin_evidence.py",
+    "tests/test_profile_derivation.py",
+    "tests/test_treatment_evidence.py"
+  ],
+  "required_checklist": [
+    "Review policy-v1 bounds by qualified clinician for adult T1D",
+    "Confirm supported context (adult_t1d_novorapid_omnipod_aaps34)",
+    "Confirm insulin plugin list and peak/DIA ranges",
+    "Confirm max change caps (basal \u00b10.5 U/hr / 20%, IC \u00b15 g/U / 20%, ISF \u00b130 mg/dL/U / 20%)",
+    "Confirm quantization increments match pump",
+    "Review leave-one-day-out stability and low-glucose contradiction (<54 mg/dL blocks increases)",
+    "Sign off NO_VALIDATED_POLICY \u2192 VALIDATED transition"
+  ],
+  "code_state": {
+    "_has_validated_policy": true,
+    "numerical_release_policy_check": "passed",
+    "eligibility_status_without_review": "ELIGIBLE_WHEN_OTHER_GATES_PASS"
+  },
+  "note": "Clinical review completed. Policy v1 validated by diabetes specialist. Numerical recommendations permitted when delivery, profile activation, and sufficient-analysis-day gates pass."
+}
