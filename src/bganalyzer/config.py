@@ -48,21 +48,6 @@ class SyncConfig(BaseSettings):
     request_delay_seconds: float = 0.5
 
 
-class ModelConfig(BaseSettings):
-    """Local inference model configuration."""
-
-    model_config = SettingsConfigDict(protected_namespaces=())
-
-    model_repo: str = "Qwen/Qwen3-14B-GGUF"
-    model_revision: str = "main"
-    model_file: str = "qwen3-14b-q4_k_m.gguf"
-    context_size: int = 8192
-    max_tokens: int = 1500
-    temperature: float = 0.2
-    gpu_layers: int = -1
-    idle_timeout_seconds: int = 600
-    use_vulkan: bool = True
-
 
 class UIConfig(BaseSettings):
     """UI configuration."""
@@ -96,7 +81,6 @@ class AppConfig(BaseSettings):
     nightscout: NightscoutConfig = Field(default_factory=NightscoutConfig)
     atlas: AtlasConfig = Field(default_factory=AtlasConfig)
     sync: SyncConfig = Field(default_factory=SyncConfig)
-    model: ModelConfig = Field(default_factory=ModelConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
 
@@ -127,14 +111,9 @@ class AppConfig(BaseSettings):
         """Get database file path."""
         return self.data_dir / "bganalyzer.db"
 
-    @property
-    def model_dir(self) -> Path:
-        """Get model directory."""
-        return self.cache_dir / "models"
-
     def ensure_dirs(self) -> None:
         """Ensure all required directories exist with correct permissions."""
-        for path in [self.config_dir, self.data_dir, self.cache_dir, self.model_dir]:
+        for path in [self.config_dir, self.data_dir, self.cache_dir]:
             path.mkdir(parents=True, exist_ok=True, mode=0o700)
 
     @classmethod

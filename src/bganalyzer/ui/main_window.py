@@ -9,26 +9,28 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, QDate
 from PySide6.QtWidgets import (
-    QCheckBox,
-    QComboBox,
-    QDateEdit,
-    QScrollArea,
-    QFileDialog,
-    QFormLayout,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QMainWindow,
-    QMessageBox,
-    QPushButton,
-    QSpinBox,
-    QTableWidget,
-    QTableWidgetItem,
-    QTabWidget,
-    QTextBrowser,
-    QVBoxLayout,
-    QWidget,
-)
+        QCheckBox,
+        QComboBox,
+        QDateEdit,
+        QScrollArea,
+        QFileDialog,
+        QFormLayout,
+        QHBoxLayout,
+        QLabel,
+        QLineEdit,
+        QMainWindow,
+        QMessageBox,
+        QPushButton,
+        QSpinBox,
+        QTableWidget,
+        QHeaderView,
+        QTabWidget,
+        QTextBrowser,
+        QVBoxLayout,
+        QWidget,
+    )
+
+from PySide6.QtWidgets import QTableWidgetItem
 
 from bganalyzer.analytics.report import quality_text
 from bganalyzer.analytics.calendar import day_bounds
@@ -38,7 +40,13 @@ from bganalyzer.nightscout.atlas import validate_atlas_uri
 from bganalyzer.db.connection import close_connection, initialize_database
 from bganalyzer.db.sync_journal import SyncJournal
 from bganalyzer.nightscout.sync import DAY
-from bganalyzer.ui.workers import ReportWorker, SyncWorker, LocalAIWorker, BasalWorker
+from bganalyzer.ui.workers import ReportWorker, SyncWorker, BasalWorker
+
+# A CGM that uploads once every 5 minutes is routinely 10 minutes late, so a
+# live report anchored at the last wall-clock second invents a missing-data
+# tail on every run. Historical windows keep their exact sync bounds; only the
+# live "now" anchor is rolled back by this buffer.
+CGM_DELAY_BUFFER_MS = 10 * 60 * 1000
 
 
 class LocalDayAxis(pg.DateAxisItem):
@@ -56,13 +64,11 @@ class MainWindow(QMainWindow):
         self.config = config
         self.credentials = credential_provider
         self.atlas_credentials = AtlasCredentialProvider(config)
-        self.ai_worker = None
-        self._ai_request_id = None
-        self._ai_result_data = None
         self.basal_worker = None
         self._basal_request_id = None
         self._basal_pending = False
         self._basal_got_result = True
+        self._auto_sync_pending = False
         self.worker = None
         self._report_end_ms = None
         self.report_worker = None
@@ -83,30 +89,9 @@ class MainWindow(QMainWindow):
         self._overview()
         self._records()
         self._quality()
-        self._settings()
         self._basal()
+        self._settings()
         explanation_layout = self._page("Report explanation")
-        ai_controls = QHBoxLayout()
-        self.ai_install = QPushButton("Install local AI (5 GB)")
-        self.ai_explain = QPushButton("Explain with local AI")
-        self.ai_cancel = QPushButton("Cancel local AI")
-        self.ai_cancel.setEnabled(False)
-        self.ai_cpu = QCheckBox("Use CPU instead of GPU")
-        self.ai_cpu.setChecked(not config.model.use_vulkan)
-        self.ai_install.clicked.connect(lambda: self.start_local_ai(install=True))
-        self.ai_explain.clicked.connect(lambda: self.start_local_ai(install=False))
-        self.ai_cancel.clicked.connect(self.cancel_local_ai)
-        for widget in (self.ai_install, self.ai_explain, self.ai_cancel, self.ai_cpu):
-            ai_controls.addWidget(widget)
-        explanation_layout.addLayout(ai_controls)
-        self.ai_status = QLabel(
-            "Qwen3 8B runs within this app. Installation downloads verified files; report inference stays local."
-        )
-        self.ai_status.setWordWrap(True)
-        explanation_layout.addWidget(self.ai_status)
-        self.ai_output = QTextBrowser()
-        self.ai_output.setMaximumHeight(220)
-        explanation_layout.addWidget(self.ai_output)
         self.explanation_view = QTextBrowser()
         explanation_layout.addWidget(self.explanation_view)
         self.timer = QTimer(self)
@@ -115,68 +100,7 @@ class MainWindow(QMainWindow):
         self.timer.start()
         self.refresh_cached()
         if not config.atlas.database:
-            self.tabs.setCurrentIndex(3)
-
-    def start_local_ai(self, install=False):
-        if self.ai_worker is not None or self._close_pending:
-            return
-        explanation = (
-            None
-            if install
-            else (self._report_snapshot.explanation if self._report_snapshot else {})
-        )
-        if not install and not explanation.get("contributions"):
-            self.ai_status.setText("Import glucose data before requesting local AI highlights.")
-            return
-        self.config.model.use_vulkan = not self.ai_cpu.isChecked()
-        self._ai_request_id = self._report_request_id
-        self._ai_result_data = None
-        self.ai_output.clear()
-        self.ai_worker = LocalAIWorker(self.config, explanation, self)
-        self.ai_worker.progress.connect(self.ai_status.setText)
-        self.ai_worker.result.connect(self._local_ai_result)
-        self.ai_worker.failed.connect(self.ai_status.setText)
-        self.ai_worker.finished.connect(self._local_ai_finished)
-        self.ai_install.setEnabled(False)
-        self.ai_explain.setEnabled(False)
-        self.ai_cpu.setEnabled(False)
-        self.ai_cancel.setEnabled(True)
-        self.ai_worker.start()
-
-    def cancel_local_ai(self):
-        if self.ai_worker is not None:
-            self.ai_worker.requestInterruption()
-            self.ai_status.setText("Stopping local AI…")
-
-    def _local_ai_result(self, result):
-        if result.get("installed"):
-            self.ai_status.setText("Local AI installed and verified. Choose Explain with local AI.")
-        elif (
-            self._ai_request_id == self._report_request_id
-            and self._report_snapshot
-            and result.get("evidence_hash")
-            == self._report_snapshot.explanation.get("evidence_hash")
-        ):
-            self._ai_result_data = result
-            self.ai_output.setPlainText(result["text"])
-            self.ai_status.setText(
-                "Completed locally with Qwen3 8B. Model unloaded to release GPU memory."
-            )
-        else:
-            self.ai_status.setText(
-                "The report changed while AI was running. Request fresh highlights."
-            )
-
-    def _local_ai_finished(self):
-        if self.ai_worker is not None:
-            self.ai_worker.deleteLater()
-            self.ai_worker = None
-        self.ai_install.setEnabled(True)
-        self.ai_explain.setEnabled(True)
-        self.ai_cpu.setEnabled(True)
-        self.ai_cancel.setEnabled(False)
-        if self._close_pending:
-            self.close()
+            self.tabs.setCurrentIndex(2)
 
     def _page(self, name):
         page = QWidget()
@@ -511,9 +435,25 @@ class MainWindow(QMainWindow):
         )
         self.basal_status.setWordWrap(True)
         layout.addWidget(self.basal_status)
-        self.basal_output = QTextBrowser()
-        self.basal_output.setMinimumHeight(300)
-        layout.addWidget(self.basal_output)
+
+        # Suggestions table: one row per merged basal segment plus IC/ISF.
+        # Consecutive hours sharing a proposed rate are merged into a range
+        # (e.g. hours 20-23 at 1.325 U/hr) instead of four identical rows.
+        self.basal_table = QTableWidget()
+        self.basal_table.setColumnCount(6)
+        self.basal_table.setHorizontalHeaderLabels(
+            ["Segment", "Baseline (U/hr)", "Proposed (U/hr)", "Direction", "Status", "Confidence"]
+        )
+        self.basal_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.basal_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.basal_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.basal_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.basal_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.basal_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        self.basal_table.setAlternatingRowColors(True)
+        self.basal_table.setSortingEnabled(True)
+        self.basal_table.setMinimumHeight(120)
+        layout.addWidget(self.basal_table)
 
     def _start_basal_computation(self):
         if self.basal_worker is not None or self._close_pending:
@@ -536,9 +476,9 @@ class MainWindow(QMainWindow):
         self._basal_request_id = self._report_request_id
         self._basal_got_result = False
         self.basal_status.setText("Checking basal analysis readiness…")
-        self.basal_output.clear()
         self.basal_refresh.setEnabled(False)
         self.basal_cancel.setEnabled(True)
+        self.basal_table.clear()
         settings = self._basal_settings()
         for combo in self.basal_confirmations.values():
             combo.setEnabled(False)
@@ -584,26 +524,77 @@ class MainWindow(QMainWindow):
     def _basal_progress(self, text):
         self.basal_status.setText(text)
 
+    def _render_basal_table(self, result):
+        """Populate the suggestions table from the merged candidate grid.
+
+        Consecutive hours sharing a proposed rate are merged into a range
+        (e.g. hours 20-23 at 1.325 U/hr) rather than listing four identical
+        rows. Rejected segments keep their reason in the Status column.
+        """
+        from bganalyzer.analytics.basal_recommendations import _merge_basal_ranges
+
+        rows = _merge_basal_ranges(result.get("recommendations", [])) or \
+            _merge_basal_ranges(result.get("descriptive_candidates", []))
+        self.basal_table.setRowCount(len(rows))
+        for r, row in enumerate(rows):
+            self.basal_table.setItem(r, 0, QTableWidgetItem(str(row.get("range", ""))))
+            # Basal rates are entered on Omnipod/AAPS to two decimal places;
+            # display them rounded so the grid never shows a third digit.
+            self.basal_table.setItem(
+                r, 1, QTableWidgetItem(f"{row.get('baseline', 0):.2f}")
+            )
+            self.basal_table.setItem(
+                r, 2, QTableWidgetItem(f"{row.get('proposed', 0):.2f}")
+            )
+            self.basal_table.setItem(
+                r, 3, QTableWidgetItem(str(row.get("direction", "n/a")))
+            )
+            self.basal_table.setItem(
+                r, 4, QTableWidgetItem(str(row.get("status", "")))
+            )
+            self.basal_table.setItem(
+                r, 5, QTableWidgetItem(str(row.get("confidence", "")))
+            )
+        if rows:
+            self.basal_table.resizeRowsToContents()
+
     def _basal_result(self, result):
         if self._basal_request_id != self._report_request_id:
             return
-        from bganalyzer.analytics.basal_recommendations import format_readiness
 
         self._basal_got_result = True
 
         if not isinstance(result, dict):
-            self.basal_output.setPlainText(f"Internal error: basal worker returned non-dict result: {type(result).__name__} = {result!r}")
-            self.basal_status.setText("Failed.")
+            self.basal_status.setText(
+                f"Failed: basal worker returned non-dict result: "
+                f"{type(result).__name__} = {result!r}"
+            )
             return
 
-        self.basal_output.setPlainText(format_readiness(result))
+        self._render_basal_table(result)
+
+        # A stale connection usually means the last cached upload is older than
+        # the live window expects — most often the tail of the report range has
+        # not been synced yet. Rather than leaving the user to notice and click
+        # Sync report period, trigger one and re-run the check once it lands.
+        # Sync is best-effort: if it fails the existing result still displays.
+        reason_codes = {
+            rc.get("code") for rc in result.get("checks", []) if not rc.get("passed")
+        }
+        if "eligibility_connection_stale" in reason_codes and self.worker is None:
+            self._auto_sync_pending = True
+            self._basal_pending = True
+            self._basal_got_result = False
+            self.basal_status.setText("Connection stale — syncing latest data…")
+            self.sync(self.report_days.value(), today_only=True)
+            return
+
         self.basal_status.setText(result.get("message", "Basal recommendations withheld."))
 
     def _basal_failed(self, message):
         if self._basal_request_id == self._report_request_id:
             self._basal_got_result = True
-            self.basal_output.setPlainText(f"Basal computation failed: {message}")
-            self.basal_status.setText("Failed.")
+            self.basal_status.setText(f"Basal computation failed: {message}")
 
     def _basal_finished(self):
         for combo in self.basal_confirmations.values():
@@ -688,6 +679,9 @@ class MainWindow(QMainWindow):
         self.refresh_button.setEnabled(True)
         self.save_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
+        # refresh_cached() starts a fresh report worker; _render_report will
+        # re-trigger the basal check against the new snapshot when it lands.
+        # The stale-connection auto-sync path sets _basal_pending above.
         self.refresh_cached()
         if self._close_pending and self.report_worker is None:
             self.close()
@@ -710,7 +704,15 @@ class MainWindow(QMainWindow):
             self._start_report()
 
     def _start_report(self):
-        end = self._report_end_ms if self._report_end_ms is not None else int(time.time() * 1000)
+        # CGM uploads lag behind real time; a device that reports once every
+        # 5 minutes can easily be 10 minutes late. Demanding data up to the
+        # last wall-clock second only manufactures a false "missing data" edge
+        # at the end of every report, so the live end is rolled back by the
+        # configured delay buffer. Synced historical windows keep their exact
+        # bounds: only the live "now" anchor is trimmed.
+        end = self._report_end_ms
+        if end is None:
+            end = int(time.time() * 1000) - CGM_DELAY_BUFFER_MS
         start = end - self.report_days.value() * DAY
         self._report_running_id = self._report_request_id
         today = datetime.now(ZoneInfo(self.config.ui.timezone)).date()
@@ -749,12 +751,6 @@ class MainWindow(QMainWindow):
         # Changing source or range while loading cannot overwrite the newest selection.
         if self._close_pending or snapshot.request_id != self._report_request_id:
             return
-        if self._ai_result_data is not None:
-            self.ai_status.setText(
-                "Report refreshed. Request local AI highlights for the updated evidence."
-            )
-        self._ai_result_data = None
-        self.ai_output.clear()
         self._report_snapshot = snapshot
         if self._basal_pending and not self._close_pending:
             if self._snapshot_days(snapshot) == self.basal_days.value():
@@ -762,9 +758,6 @@ class MainWindow(QMainWindow):
                 self._start_basal_computation()
             else:
                 self._start_basal_computation()
-        self.explanation_view.setPlainText(
-            snapshot.explanation.get("text", "No report data available.")
-        )
         self.metrics = None
         self.plot.clear()
         self.event_plot.clear()
@@ -874,7 +867,6 @@ class MainWindow(QMainWindow):
                         "metrics": self.metrics.model_dump(),
                         "data_revision": self._report_snapshot.data_revision,
                         "explanation": self._report_snapshot.explanation,
-                        "local_ai_highlights": self._ai_result_data,
                         "quality": self._report_snapshot.quality,
                         "limitations": [
                             "Descriptive glucose summary only",
@@ -894,12 +886,10 @@ class MainWindow(QMainWindow):
         if (
             self.worker is not None
             or self.report_worker is not None
-            or self.ai_worker is not None
             or self.basal_worker is not None
         ):
             self._close_pending = True
             self.cancel_sync()
-            self.cancel_local_ai()
             if self.report_worker is not None:
                 self.report_worker.requestInterruption()
             if self.basal_worker is not None:

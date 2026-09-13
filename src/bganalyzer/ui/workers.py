@@ -115,44 +115,6 @@ class ReportWorker(QThread):
             close_connection()
 
 
-class LocalAIWorker(QThread):
-    progress = Signal(str)
-    result = Signal(object)
-    failed = Signal(str)
-
-    def __init__(self, config, explanation=None, parent=None):
-        super().__init__(parent)
-        self.config = config.model_copy(deep=True)
-        self.explanation = explanation
-        self.manager = None
-
-    def requestInterruption(self):
-        super().requestInterruption()
-        if self.manager is not None:
-            self.manager.cancel()
-
-    def run(self):
-        from bganalyzer.inference.assets import install, LocalAIError
-        from bganalyzer.inference.manager import InferenceManager
-
-        try:
-            if self.explanation is None:
-                install(self.config, self.progress.emit, self.isInterruptionRequested)
-                self.result.emit({"installed": True})
-            else:
-                self.manager = InferenceManager(
-                    self.config, self.isInterruptionRequested, self.progress.emit
-                )
-                self.result.emit(self.manager.explain(self.explanation))
-        except LocalAIError as exc:
-            self.failed.emit(str(exc))
-        except Exception:
-            self.failed.emit("Local AI operation failed. Your calculated report remains available.")
-        finally:
-            if self.manager is not None:
-                self.manager.stop_server()
-
-
 class BasalWorker(QThread):
     progress = Signal(str)
     result = Signal(object)
