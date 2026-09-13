@@ -86,6 +86,38 @@ class ProfileTimeline:
         self.profile_versions = {pv.remote_id: pv for pv in profile_versions}
         self.activations = sorted(activations, key=lambda a: a.start_ms)
         self.default_timezone = default_timezone
+        # Pump store uploads are configuration state, not activation evidence,
+        # so they never populate self.activations. They are still the best
+        # available profile for any timestamp with no switch coverage: the pump
+        # was running that schedule. Keep them sorted by effective_from so the
+        # fallback can pick the latest one active at the query time.
+        self.store_versions = sorted(
+            (
+                pv
+                for pv in profile_versions
+                if not pv.remote_id.startswith("switch:")
+                and not pv.remote_id.startswith("effective:")
+            ),
+            key=lambda pv: pv.effective_from_ms,
+        )
+
+    def _store_fallback(self, at_ms: int) -> Optional[ProfileVersion]:
+        """Latest pump store profile active at at_ms, or None.
+
+        A store upload is configuration state, not activation evidence, so it
+        never appears in self.activations. It is still the best available
+        profile for timestamps with no switch coverage: the pump was running
+        that schedule. This is a fallback, clearly labelled as such — it cannot
+        establish that the pump activated a profile, only that the profile was
+        configured.
+        """
+        latest = None
+        for pv in self.store_versions:
+            if pv.effective_from_ms <= at_ms:
+                latest = pv
+            else:
+                break
+        return latest
 
     def resolve_profile(self, at_ms: int) -> ResolvedProfile | UnknownProfile:
         """Resolve the active profile at a specific timestamp.
@@ -95,6 +127,12 @@ class ProfileTimeline:
         - Effective Note uploads with originalCustomizedName are activation evidence
         - Already-customized schedules are NOT rescaled by percentage/timeShift
         - Zero basal values are preserved
+
+        When no switch-derived activation covers the timestamp, falls back to
+        the latest pump store profile active at that time. The fallback is
+        labelled as store-origin (certainty "unknown", origin "profile_store")
+        so callers can distinguish it from switch evidence; it still resolves
+        a real schedule, which is what autotune needs to tune against.
         """
         # Find active activation
         activation = None
@@ -104,9 +142,23 @@ class ProfileTimeline:
                 break
 
         if activation is None:
-            return UnknownProfile("No profile activation covering this timestamp")
+            store_pv = self._store_fallback(at_ms)
+            if store_pv is None:
+                return UnknownProfile("No profile activation covering this timestamp")
+            return self._resolve_from_version(store_pv, at_ms, activation=None)
 
         pv = activation.profile_version
+        return self._resolve_from_version(pv, at_ms, activation=activation)
+
+    def _resolve_from_version(self, pv: ProfileVersion, at_ms: int, activation):
+        """Build a ResolvedProfile from a ProfileVersion, with or without an
+        accompanying activation record.
+
+        When activation is None the profile came from the pump store fallback:
+        it is configuration state, not activation evidence, so it carries no
+        percentage, no time shift, and certainty "unknown". It still resolves a
+        real schedule, which is what autotune needs to tune against.
+        """
         profile_data = pv.normalized_json
 
         # Parse schedule from profile JSON
@@ -116,17 +168,36 @@ class ProfileTimeline:
         target_low_schedule = self._parse_schedule(profile_data.get("target_low", []), "value")
         target_high_schedule = self._parse_schedule(profile_data.get("target_high", []), "value")
 
-        # Apply percentage and time shift ONLY if profile is not already customized
-        is_customized = activation.origin == "effective_note"
-        percentage = activation.percentage if not is_customized else 100.0
-        time_shift = activation.time_shift_minutes if not is_customized else 0
+        if activation is None:
+            # Store fallback: no customization evidence, certainty unknown.
+            is_customized = False
+            percentage = 100.0
+            time_shift = 0
+            evidence = ProfileActivation(
+                start_ms=pv.effective_from_ms,
+                end_ms=None,
+                certainty="unknown",
+                origin="profile_store",
+                evidence_json={
+                    "source_refs": [pv.remote_id],
+                    "derived_from": "pump_store_fallback",
+                    "note": "Configuration state, not activation evidence.",
+                },
+                profile_version=pv,
+            )
+        else:
+            # Apply percentage and time shift ONLY if profile is not already customized
+            is_customized = activation.origin == "effective_note"
+            percentage = activation.percentage if not is_customized else 100.0
+            time_shift = activation.time_shift_minutes if not is_customized else 0
+            evidence = activation
 
-        if percentage != 100.0 or time_shift != 0:
-            basal_schedule = self._apply_customization(basal_schedule, "basal", percentage, time_shift)
-            ic_schedule = self._apply_customization(ic_schedule, "ic", percentage, time_shift)
-            isf_schedule = self._apply_customization(isf_schedule, "isf", percentage, time_shift)
-            target_low_schedule = self._apply_customization(target_low_schedule, "target", percentage, time_shift)
-            target_high_schedule = self._apply_customization(target_high_schedule, "target", percentage, time_shift)
+            if percentage != 100.0 or time_shift != 0:
+                basal_schedule = self._apply_customization(basal_schedule, "basal", percentage, time_shift)
+                ic_schedule = self._apply_customization(ic_schedule, "ic", percentage, time_shift)
+                isf_schedule = self._apply_customization(isf_schedule, "isf", percentage, time_shift)
+                target_low_schedule = self._apply_customization(target_low_schedule, "target", percentage, time_shift)
+                target_high_schedule = self._apply_customization(target_high_schedule, "target", percentage, time_shift)
 
         dia = profile_data.get("dia", 5.0)
         peak = profile_data.get("peak", 75)
@@ -144,7 +215,7 @@ class ProfileTimeline:
             timezone=pv.timezone,
             percentage=percentage,
             time_shift_minutes=time_shift,
-            activation_evidence=activation,
+            activation_evidence=evidence,
             is_customized=is_customized,
         )
 

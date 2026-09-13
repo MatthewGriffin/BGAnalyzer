@@ -161,9 +161,17 @@ class NumericalReleasePolicy:
         return True, "OK"
 
     def quantize_basal(self, value: float) -> float:
-        """Quantize basal rate to pump entry increment."""
+        """Quantize basal rate to the pump's entry precision.
+
+        AAPS on Android/Omnipod accepts basal rates to two decimal places
+        (e.g. 1.35, 1.40 U/hr). The 0.025 step used to be applied here, which
+        produced three-decimal values such as 1.325 that the pump rejects on
+        entry. Two-decimal rounding is applied after any pump-increment step so
+        the result is always enterable.
+        """
         inc = self.pump_entry_increments.get("basal", 0.025)
-        return round(value / inc) * inc
+        stepped = round(value / inc) * inc
+        return round(stepped, 2)
 
     def quantize_ic(self, value: float) -> float:
         """Quantize IC to pump entry increment."""

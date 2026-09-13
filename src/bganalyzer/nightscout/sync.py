@@ -226,6 +226,12 @@ class SyncCoordinator:
                         (source, remote),
                     )
                 return changed
+            # A raw SGV outside the physiological range is not a CGM reading —
+            # it is usually an unconverted mmol/L value or a sensor artifact.
+            # Skip it rather than letting it crash the whole import: the raw
+            # entry was already persisted above, so the window still completes.
+            if not (0 <= sgv <= 1000):
+                return changed
             self.repository.upsert_glucose(
                 GlucoseReading(**common, sgv_mgdl=sgv, valid=valid and sgv > 0)
             )
