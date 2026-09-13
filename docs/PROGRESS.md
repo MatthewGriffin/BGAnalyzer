@@ -1,3 +1,13 @@
+# Project review and analysis-context corrections — 13 September 2026
+
+Verification: baseline 200 tests passed; updated full suite 209 passed in 93.21 seconds. A subsequently added database-adapter regression passed with the four-test analysis-context suite. Selected Ruff checks and compileall passed. Existing Qt/pyqtgraph teardown warnings remain.
+
+Reviewed the working tree and preserved/completed the unfinished IOB graph feature. Replaced guessed peak/DIA and bolus-only display-list calculation with source-linked AAPS uploaded IOB. Daily graph loading uses its own IOB sample range; negative/zero values are retained and invalid/conflicting/disappeared observations break the curve. One persistent overlay replaces per-refresh ViewBox creation.
+
+Corrected analysis input handling: retain earlier insulin for explicit per-day DIA-plus-two-hour context; exclude disappeared glucose/treatments; preserve percentage-zero as 100% internal rate; omit missing-duration temps rather than invent 30 minutes; use actual local day ends for splitting and eligibility coverage. Added tests for DST, lookback boundaries, database normalization, IOB source semantics and graph lifecycle. No numerical release gate was relaxed.
+
+See PROJECT_STATE.md for the current supported features and ordered remaining work. Full historical delivery and raw-to-result Kotlin parity remain incomplete.
+
 # Incremental reconciliation repair — 12 September 2026
 
 A later user report lost previously observed profile/configuration records after a fast poll. Root cause: ObjectId-filtered incremental fetches were passed to full-day disappearance reconciliation. Delta saves now only upsert/re-observe returned records; they do not mark absent IDs missing, certify full-window coverage, or extend full-backfill bounds. Forced imports ignore incremental ObjectId bounds. Full scans retain disappearance detection, and genuine re-observation clears prior missing flags. Do not bulk-clear disappearance records without re-reading the source.

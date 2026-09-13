@@ -345,7 +345,7 @@ class EligibilityChecker:
             if not stat.get("tuned"):
                 continue
             lo = max(start_ms, stat["date_ms"])
-            hi = min(end_ms, stat["date_ms"] + 86400000)
+            hi = min(end_ms, stat.get("end_ms", stat["date_ms"] + 86400000))
             coverage[stat["date_ms"]] = self._window_coverage(glucose_readings, lo, hi)
         return coverage
 

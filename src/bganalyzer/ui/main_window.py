@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 
 from PySide6.QtWidgets import QTableWidgetItem
 
+from bganalyzer.ui.linked_view import LinkedValueViewBox
 from bganalyzer.analytics.report import quality_text
 from bganalyzer.analytics.calendar import day_bounds
 from bganalyzer.analytics.treatment_evidence import LANES, event_lanes, event_details
@@ -88,19 +89,16 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.tabs)
         self._overview()
         self._records()
-        self._quality()
         self._basal()
+        self._quality()
         self._settings()
-        explanation_layout = self._page("Report explanation")
-        self.explanation_view = QTextBrowser()
-        explanation_layout.addWidget(self.explanation_view)
         self.timer = QTimer(self)
         self.timer.setInterval(max(60, config.sync.poll_interval_seconds) * 1000)
         self.timer.timeout.connect(lambda: self.sync(1, today_only=True))
         self.timer.start()
         self.refresh_cached()
         if not config.atlas.database:
-            self.tabs.setCurrentIndex(2)
+            self.tabs.setCurrentIndex(4)
 
     def _page(self, name):
         page = QWidget()
@@ -165,17 +163,44 @@ class MainWindow(QMainWindow):
         layout.addLayout(navigation)
         self.graph_message = QLabel()
         layout.addWidget(self.graph_message)
-        self.plot = pg.PlotWidget(axisItems={"bottom": LocalDayAxis(self.config.ui.timezone)})
+        self.plot = pg.PlotWidget(viewBox=LinkedValueViewBox(), axisItems={"bottom": LocalDayAxis(self.config.ui.timezone)})
         self.plot.setLabel("left", "Glucose", units="mmol/L")
         self.plot.setLabel("bottom", f"Time ({self.config.ui.timezone})")
         self.plot.showGrid(x=True, y=True, alpha=0.2)
+        # One persistent overlay shares the daily graph's time axis.
+        self.iob_view = LinkedValueViewBox(primary=self.plot.getViewBox())
+        self.plot.scene().addItem(self.iob_view)
+        self.plot.showAxis("right")
+        self.iob_axis = self.plot.getAxis("right")
+        self.iob_axis.linkToView(self.iob_view)
+        self.iob_axis.setLabel("AAPS uploaded IOB", units="U")
+        self.iob_view.setXLink(self.plot.getViewBox())
+        self.iob_curve = None
+        self.plot.getViewBox().sigResized.connect(self._resize_iob_view)
+        self._resize_iob_view()
         layout.addWidget(self.plot, 1)
         self._event_timeline(layout)
-        self.review = QLabel(
-            "Profile suggestions are unavailable: the inherited tuning code has not passed AAPS reference-parity testing. No settings are written to Nightscout or AAPS."
-        )
-        self.review.setWordWrap(True)
-        layout.addWidget(self.review)
+
+    def _resize_iob_view(self):
+        self.iob_view.setGeometry(self.plot.getViewBox().sceneBoundingRect())
+        self.iob_view.linkedViewChanged(self.plot.getViewBox(), self.iob_view.XAxis)
+
+    def _render_iob(self, snapshot):
+        x, y = [], []
+        previous = None
+        for stamp, value in snapshot.iob_points:
+            if previous is not None and stamp - previous > 600000:
+                x.append(float("nan"))
+                y.append(float("nan"))
+            x.append(stamp / 1000)
+            y.append(value if value is not None else float("nan"))
+            previous = stamp
+        if x:
+            self.iob_curve = pg.PlotDataItem(np.array(x), np.array(y), pen=pg.mkPen("#e07a5f", width=2),
+                                            symbol="o", symbolSize=3, connect="finite")
+            self.iob_view.addItem(self.iob_curve)
+            self.iob_view.enableAutoRange(axis=pg.ViewBox.YAxis)
+        self._resize_iob_view()
 
     def _event_timeline(self, layout):
         self.event_summary = QLabel("Recorded events · click a marker for details")
@@ -440,20 +465,30 @@ class MainWindow(QMainWindow):
         # Consecutive hours sharing a proposed rate are merged into a range
         # (e.g. hours 20-23 at 1.325 U/hr) instead of four identical rows.
         self.basal_table = QTableWidget()
-        self.basal_table.setColumnCount(6)
+        self.basal_table.setColumnCount(5)
         self.basal_table.setHorizontalHeaderLabels(
-            ["Segment", "Baseline (U/hr)", "Proposed (U/hr)", "Direction", "Status", "Confidence"]
+            ["Hour / setting", "Baseline", "Proposed", "Direction", "Status"]
         )
         self.basal_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.basal_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.basal_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.basal_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.basal_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        self.basal_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         self.basal_table.setAlternatingRowColors(True)
         self.basal_table.setSortingEnabled(True)
         self.basal_table.setMinimumHeight(120)
+        self.basal_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.basal_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.basal_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.basal_table.itemSelectionChanged.connect(self._show_basal_decision)
         layout.addWidget(self.basal_table)
+        layout.addWidget(QLabel("Why this hour’s change was calculated"))
+        self.basal_show_calculations = QCheckBox("Show calculation details and individual readings")
+        self.basal_show_calculations.toggled.connect(self._show_basal_decision)
+        layout.addWidget(self.basal_show_calculations)
+        self.basal_details = QTextBrowser()
+        self.basal_details.setPlainText("Select an hour to inspect its calculation evidence.")
+        layout.addWidget(self.basal_details)
 
     def _start_basal_computation(self):
         if self.basal_worker is not None or self._close_pending:
@@ -478,7 +513,8 @@ class MainWindow(QMainWindow):
         self.basal_status.setText("Checking basal analysis readiness…")
         self.basal_refresh.setEnabled(False)
         self.basal_cancel.setEnabled(True)
-        self.basal_table.clear()
+        self.basal_table.setRowCount(0)
+        self.basal_details.setPlainText("Checking calculation evidence…")
         settings = self._basal_settings()
         for combo in self.basal_confirmations.values():
             combo.setEnabled(False)
@@ -525,38 +561,47 @@ class MainWindow(QMainWindow):
         self.basal_status.setText(text)
 
     def _render_basal_table(self, result):
-        """Populate the suggestions table from the merged candidate grid.
-
-        Consecutive hours sharing a proposed rate are merged into a range
-        (e.g. hours 20-23 at 1.325 U/hr) rather than listing four identical
-        rows. Rejected segments keep their reason in the Status column.
-        """
-        from bganalyzer.analytics.basal_recommendations import _merge_basal_ranges
-
-        rows = _merge_basal_ranges(result.get("recommendations", [])) or \
-            _merge_basal_ranges(result.get("descriptive_candidates", []))
+        """Keep hourly evidence separate, including when adjacent rates match."""
+        self._basal_display_result = result
+        rows = result.get("recommendations", []) or result.get("descriptive_candidates", [])
+        self.basal_table.blockSignals(True)
+        self.basal_table.setSortingEnabled(False)
+        self.basal_table.setRowCount(0)
         self.basal_table.setRowCount(len(rows))
-        for r, row in enumerate(rows):
-            self.basal_table.setItem(r, 0, QTableWidgetItem(str(row.get("range", ""))))
-            # Basal rates are entered on Omnipod/AAPS to two decimal places;
-            # display them rounded so the grid never shows a third digit.
-            self.basal_table.setItem(
-                r, 1, QTableWidgetItem(f"{row.get('baseline', 0):.2f}")
-            )
-            self.basal_table.setItem(
-                r, 2, QTableWidgetItem(f"{row.get('proposed', 0):.2f}")
-            )
-            self.basal_table.setItem(
-                r, 3, QTableWidgetItem(str(row.get("direction", "n/a")))
-            )
-            self.basal_table.setItem(
-                r, 4, QTableWidgetItem(str(row.get("status", "")))
-            )
-            self.basal_table.setItem(
-                r, 5, QTableWidgetItem(str(row.get("confidence", "")))
-            )
+        for index, row in enumerate(rows):
+            unit = {"basal": "U/hr", "ic": "g/U", "isf": "mg/dL/U"}.get(row.get("family"), "")
+            label = row.get("time") or f"{row.get('family', '').upper()} {row.get('segment', '')}"
+            values = [label]
+            for key in ("baseline_value", "proposed_value"):
+                value = row.get(key)
+                values.append(f"{value:g} {unit}" if isinstance(value, (int, float)) else "Unavailable")
+            values += [row.get("direction", ""), row.get("status", "")]
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                if column == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, row)
+                self.basal_table.setItem(index, column, item)
+        self.basal_table.setSortingEnabled(True)
+        self.basal_table.blockSignals(False)
+        self.basal_details.setPlainText("No hourly candidates were produced for this analysis.")
         if rows:
             self.basal_table.resizeRowsToContents()
+            self.basal_table.selectRow(0)
+
+    def _show_basal_decision(self):
+        from bganalyzer.analytics.candidate_details import format_candidate_decision, summarize_candidate_decision
+
+        row = self.basal_table.currentRow()
+        item = self.basal_table.item(row, 0) if row >= 0 else None
+        if item is not None:
+            candidate = item.data(Qt.ItemDataRole.UserRole)
+            if candidate:
+                explanation = summarize_candidate_decision(candidate, self._basal_display_result)
+                if self.basal_show_calculations.isChecked():
+                    explanation += "\n\nCalculation details\n\n" + format_candidate_decision(
+                        candidate, self._basal_display_result
+                    )
+                self.basal_details.setPlainText(explanation)
 
     def _basal_result(self, result):
         if self._basal_request_id != self._report_request_id:
@@ -760,6 +805,8 @@ class MainWindow(QMainWindow):
                 self._start_basal_computation()
         self.metrics = None
         self.plot.clear()
+        self.iob_view.clear()
+        self.iob_curve = None
         self.event_plot.clear()
         self.event_details.setPlainText(
             "Click a recorded event below the glucose graph to inspect its evidence."
@@ -810,6 +857,7 @@ class MainWindow(QMainWindow):
             self.plot.plot(
                 np.array(x), np.array(y), pen=pg.mkPen("#38a6d7", width=2), connect="finite"
             )
+        self._render_iob(snapshot)
         self._render_events(snapshot)
         if m.covered_minutes:
             self.summary.setText(

@@ -21,6 +21,7 @@ from bganalyzer.autotune.categorize import categorize_day, Treatment, CarbEntry,
 from bganalyzer.autotune.core import run_autotune, TunedProfile
 from bganalyzer.timeline.profiles import ProfileTimeline, build_profile_timeline
 from bganalyzer.timeline.insulin import DeliveryTimeline, build_delivery_timeline
+from bganalyzer.analytics.calendar import day_bounds
 
 
 @dataclass
@@ -81,7 +82,7 @@ def build_analysis_snapshot(
     promptly when it returns True.
     """
     # Build timelines
-    profile_timeline = build_profile_timeline(conn, source_id, end_ms, start_ms)
+    profile_timeline = build_profile_timeline(conn, source_id, end_ms)
     delivery_timeline = build_delivery_timeline(conn, source_id, start_ms, end_ms, profile_timeline)
 
     # Load glucose readings
@@ -89,6 +90,8 @@ def build_analysis_snapshot(
         SELECT event_ms, sgv_mgdl, valid
         FROM glucose
         WHERE source_id = ? AND event_ms >= ? AND event_ms < ? AND valid = 1
+        AND NOT EXISTS(SELECT 1 FROM sync_disappearances d WHERE d.source_id=glucose.source_id
+            AND d.collection='entries' AND d.remote_id=glucose.remote_id AND d.resolved_ms IS NULL)
         ORDER BY event_ms
     """, (source_id, start_ms, end_ms)).fetchall()
 
@@ -97,14 +100,17 @@ def build_analysis_snapshot(
         for row in glucose_rows
     ]
 
-    # Load treatments
+    # Retain earlier cached insulin for per-day DIA lookback. Timestamp slicing
+    # happens after the day's explicit profile DIA is known; UI limits never apply.
     treatment_rows = conn.execute("""
         SELECT remote_id, event_ms, end_ms, kind, insulin_u, carbs_g,
                rate_u_h, percent, delivery_status, valid
         FROM treatments
-        WHERE source_id = ? AND event_ms >= ? AND event_ms < ?
+        WHERE source_id = ? AND event_ms < ? AND valid=1
+        AND NOT EXISTS(SELECT 1 FROM sync_disappearances d WHERE d.source_id=treatments.source_id
+            AND d.collection='treatments' AND d.remote_id=treatments.remote_id AND d.resolved_ms IS NULL)
         ORDER BY event_ms
-    """, (source_id, start_ms, end_ms)).fetchall()
+    """, (source_id, end_ms)).fetchall()
 
     # Convert to typed structures
     treatments = []
@@ -150,11 +156,15 @@ def build_analysis_snapshot(
             t.amount = insulin_u
             treatments.append(t)
         elif row["kind"] == "temp_basal":
+            if row["end_ms"] is None or row["end_ms"] <= row["event_ms"]:
+                continue  # No invented 30-minute duration.
+            if row["percent"] is None and row["rate_u_h"] is None:
+                continue
             temp_basals.append(TempBasal(
                 timestamp=row["event_ms"],
-                duration=row["end_ms"] - row["event_ms"] if row["end_ms"] else 30 * 60000,
-                rate=rate_u_h,
-                is_absolute=not bool(row["percent"]),
+                duration=row["end_ms"] - row["event_ms"],
+                rate=float(row["percent"]) + 100.0 if row["percent"] is not None else rate_u_h,
+                is_absolute=row["percent"] is None,
                 is_valid=row["valid"],
             ))
         elif row["kind"] == "carbs" or row["carbs_g"]:
@@ -304,7 +314,7 @@ def _split_into_days(
         dt = datetime.fromtimestamp(current / 1000, tz)
         local_midnight = dt.replace(hour=0, minute=0, second=0, microsecond=0)
         day_start = int(local_midnight.timestamp() * 1000)
-        day_end = day_start + 86400000
+        day_start, day_end = day_bounds(dt.date(), timezone)
 
         # Slice each time-ordered list to this day (same membership as a scan).
         glo, ghi = bisect_left(glucose_ts, day_start), bisect_left(glucose_ts, day_end)
@@ -320,12 +330,19 @@ def _split_into_days(
         # profile are skipped rather than silently falling back to baseline:
         # tuning them against the wrong schedule would be dishonest.
         # (Advance first: skipping must not stall the day loop.)
-        day_profile = profile_timeline.resolve_profile(day_start + 43200000)  # Noon
+        noon = int((local_midnight + timedelta(hours=12)).timestamp() * 1000)
+        day_profile = profile_timeline.resolve_profile(min(end_ms - 1, max(start_ms, noon)))
         current = day_end
         if day_profile is None or not hasattr(day_profile, 'basal_schedule'):
             continue
         # Convert ResolvedProfile to ATProfile
         day_profile_at = _resolved_to_atprofile(day_profile)
+        if day_profile_at.dia > 0:
+            # Pinned AutotuneIob requests explicit DIA plus two hours of context.
+            context_start = max(day_start, start_ms) - int((day_profile_at.dia + 2) * 3600000)
+            day_treatments = treatments[bisect_left(treatment_ts, context_start):thi]
+            day_temp = [tb for tb in temp_basals[:bhi] if tb.timestamp + tb.duration > context_start]
+
 
         if day_glucose:
             days.append(AnalysisDay(
@@ -419,6 +436,7 @@ def run_full_autotune(
             day_stats.append(
                 {
                     "date_ms": day.date_ms,
+                    "end_ms": day_bounds(datetime.fromtimestamp(day.date_ms / 1000, ZoneInfo(day.profile.timezone)).date(), day.profile.timezone)[1],
                     "tuned": False,
                     "n_basal_data": 0,
                     "n_isf_data": 0,
@@ -444,6 +462,7 @@ def run_full_autotune(
         day_stats.append(
             {
                 "date_ms": day.date_ms,
+                    "end_ms": day_bounds(datetime.fromtimestamp(day.date_ms / 1000, ZoneInfo(day.profile.timezone)).date(), day.profile.timezone)[1],
                 "tuned": True,
                 "n_basal_data": len(prepped.basalGlucoseData),
                 "n_isf_data": len(prepped.isfGlucoseData),

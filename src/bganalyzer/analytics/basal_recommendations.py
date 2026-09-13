@@ -922,6 +922,9 @@ def _generate_candidates(
             })
 
 
+    from bganalyzer.analytics.candidate_details import attach_basal_evidence
+
+    attach_basal_evidence(candidates, autotune_output, baseline_profile, policy)
     return candidates
 
 

@@ -21,11 +21,13 @@ Open **Connection**, enter your MongoDB Atlas database name and read-only connec
 
 MongoDB is the only remote data source for both today's automatic updates and historical imports. No Nightscout HTTP requests or fallback are made. The daily graph has previous/next-day controls; report summaries independently cover the selected multi-day range. Cached records remain available offline. A linked event timeline shows recorded carbs, boluses, SMBs and basal events beneath the glucose graph. Click a marker for source details, or double-click a treatment row to open its day.
 
-The **Report explanation** tab shows how glucose metrics were calculated, with missing-time totals and source references. Summary exports include exact per-reading calculation contributions. The calculated explanations are deterministic. **Explain with local AI** uses an app-managed Qwen3 model to select highlights from those verified facts; see [Local AI setup and limits](docs/LOCAL_AI.md).
+The **Basal readiness** tab lists individual hourly candidates. Select a row for a plain-English explanation of the observed pattern, why later glucose readings affect that basal hour, and whether the evidence agrees or conflicts. Calculation details and individual readings are optional. Withheld calculations remain labelled unvalidated. **Data quality** is the fourth tab. Summary exports retain deterministic glucose-metric explanations and per-reading contributions.
+
+The app-managed local model runtime is implemented, but the current window has no local-AI explanation controls. Hourly explanations use retained calculation evidence directly. See [Local AI setup and limits](docs/LOCAL_AI.md).
 
 ## Development status
 
-See [docs/PROGRESS.md](docs/PROGRESS.md) for the verified checkpoint and next implementation work. The interrupted implementation included incomplete insulin math and always-true eligibility checks. User-facing numerical recommendations are now explicitly withheld. The local inference prototype has been replaced with the verified, app-managed runtime described above.
+See [current project state](docs/PROJECT_STATE.md) and [docs/PROGRESS.md](docs/PROGRESS.md) for the verified checkpoint and next implementation work. The interrupted implementation included incomplete insulin math and always-true eligibility checks. Candidate release depends on eligibility checks; withheld runs can display explicitly labelled descriptive calculations. The local inference prototype has been replaced with the verified, app-managed runtime described above.
 
 Validated AAPS Autotune parity, historical delivery reconstruction, broader evidence analysis, and Flatpak distribution remain unfinished. This is a working development dashboard, not the completed recommendation product.
 

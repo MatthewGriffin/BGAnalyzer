@@ -32,6 +32,8 @@ class ReportSnapshot:
     graph_readings: list[GlucoseReading] = field(default_factory=list)
     graph_start_ms: int | None = None
     graph_end_ms: int | None = None
+    iob_points: list[tuple[int, float | None]] = field(default_factory=list)
+    iob_observations: list[dict] = field(default_factory=list)
 
 
 def load_report(config, request_id, start, end):
@@ -85,6 +87,18 @@ def load_report(config, request_id, start, end):
         if row:
             snapshot.configuration_at_ms = row[0]
             snapshot.configuration = json.loads(row[1])
+        from bganalyzer.analytics.uploaded_iob import uploaded_iob_observations
+        iob_rows = conn.execute(
+            """SELECT r.remote_id,r.revision_hash,r.is_valid,
+            json_extract(r.payload_json,'$.openaps.iob') AS iob_json,
+            EXISTS(SELECT 1 FROM sync_disappearances d WHERE d.source_id=r.source_id
+                AND d.collection='devicestatus' AND d.remote_id=r.remote_id AND d.resolved_ms IS NULL) AS presence_unknown
+            FROM raw_records r WHERE r.source_id=? AND r.collection='devicestatus'
+            AND r.is_current=1 AND json_type(r.payload_json,'$.openaps.iob')='object'""",
+            (source[0],),
+        ).fetchall()
+        snapshot.iob_observations = uploaded_iob_observations([dict(r) for r in iob_rows], start, end)
+        snapshot.iob_points = [(o["sample_ms"], o["iob_u"]) for o in snapshot.iob_observations]
         snapshot.data_revision = conn.execute(
             "SELECT COALESCE(MAX(revision),0) FROM data_revisions"
         ).fetchone()[0]

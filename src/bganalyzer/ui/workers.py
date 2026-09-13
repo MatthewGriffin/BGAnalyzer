@@ -100,6 +100,8 @@ class ReportWorker(QThread):
                 if self.graph_bounds is not None and not self.isInterruptionRequested():
                     lo, hi = self.graph_bounds
                     graph = load_report(self.config, self.request_id, lo, hi)
+                    report.iob_points = graph.iob_points
+                    report.iob_observations = graph.iob_observations
                     report.graph_readings = graph.readings
                     report.graph_treatments = graph.treatments
                     report.graph_treatment_count = graph.treatment_count

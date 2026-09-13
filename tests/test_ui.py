@@ -21,11 +21,13 @@ def test_native_window_cached_data_and_no_dose_actions(qtbot, config, repo):
     window.timer.stop()
     window.show()
     qtbot.waitUntil(lambda: window.report_worker is None, timeout=5000)
-    assert window.tabs.count() == 6
+    assert window.tabs.count() == 5
+    assert window.tabs.tabText(3) == "Data quality"
+    assert window.basal_table.columnCount() == 5
     assert "6.0 mmol/L" in window.latest.text()
     assert "STALE" in window.latest.text()
     assert window.metrics.covered_minutes == 5
-    assert "unavailable" in window.review.text()
+    assert not hasattr(window, "review")
     window.close()
 
 
@@ -180,3 +182,42 @@ def test_basal_confirmations_are_explicit_and_reset_with_period(qtbot, config, r
     window.report_days.setValue(7)
     assert window._basal_settings() == {"user_confirmations": {}}
     qtbot.waitUntil(lambda: window.report_worker is None)
+
+
+def test_iob_overlay_is_reused_on_report_refresh(qtbot, config, repo):
+    window = MainWindow(config, CredentialProvider(config))
+    qtbot.addWidget(window)
+    window.timer.stop()
+    qtbot.waitUntil(lambda: window.report_worker is None)
+    overlay = window.iob_view
+    for _ in range(2):
+        window.refresh_cached()
+        qtbot.waitUntil(lambda: window.report_worker is None)
+        assert window.iob_view is overlay
+
+
+def test_hourly_decisions_follow_sorted_selection(qtbot, config, repo):
+    from PySide6.QtCore import Qt
+    window = MainWindow(config, CredentialProvider(config))
+    qtbot.addWidget(window)
+    window.timer.stop()
+    qtbot.waitUntil(lambda: window.report_worker is None)
+    rows = [dict(family="basal", segment=hour, time=f"{hour:02d}:00",
+                 baseline_value=1.0, proposed_value=1.025, raw_value=1.027,
+                 status="candidate", contributing_days=hour) for hour in (2, 3)]
+    window._render_basal_table({"eligibility": "validation_unavailable",
+                                "descriptive_candidates": rows})
+    assert window.basal_table.rowCount() == 2
+    window.basal_table.sortItems(0, Qt.SortOrder.DescendingOrder)
+    window.basal_table.selectRow(0)
+    window.basal_show_calculations.setChecked(True)
+    window._show_basal_decision()
+    text = window.basal_details.toPlainText()
+    assert "03:00" in text
+    assert "Contributing days: 3" in text
+    assert "1.027 U/hr" in text
+    assert "not retained" in text
+    assert "1.025" in window.basal_table.item(0, 2).text()
+    window._render_basal_table({})
+    assert "No hourly candidates" in window.basal_details.toPlainText()
+    window.close()
