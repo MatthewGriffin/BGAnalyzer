@@ -12,7 +12,7 @@ def test_native_window_cached_data_and_no_dose_actions(qtbot, config, repo):
             source_id="synthetic",
             remote_id="g",
             revision_hash="r",
-            event_ms=now - 20 * 60_000,
+            event_ms=now - 30 * 60_000,
             sgv_mgdl=108,
         )
     )
@@ -77,7 +77,9 @@ def test_basal_range_control_shares_report_range_and_guides_without_snapshot(
         and not window._basal_pending,
         timeout=15000,
     )
-    assert "No basal rate changes were calculated." in window.basal_output.toPlainText()
+    # The suggestions table is the only output surface; an empty result
+    # leaves it with no rows.
+    assert window.basal_table.rowCount() == 0
     window.close()
 
 
@@ -106,7 +108,9 @@ def test_basal_check_waits_for_matching_report_range(qtbot, config, repo):
         and not window._basal_pending,
         timeout=15000,
     )
-    assert "Analyzing:" in window.basal_output.toPlainText()
+    # The status label carries the result message now that the text box is
+    # gone; it always starts with "Basal".
+    assert "Basal" in window.basal_status.text()
     window.close()
 
 

@@ -44,10 +44,10 @@ def test_eligibility_stale_and_insufficient_day_paths_do_not_crash():
         current_time_ms=0,
     )
     assert ReasonCode.CONNECTION_STALE in stale.reason_codes
-    # Connection stale is present, but NO_VALIDATED_POLICY takes priority → VALIDATION_UNAVAILABLE
-    assert ReasonCode.CONNECTION_STALE in stale.reason_codes
-    assert ReasonCode.NO_VALIDATED_POLICY in stale.reason_codes
-    assert stale.status == EligibilityStatus.VALIDATION_UNAVAILABLE
+    # With the release policy validated, connection staleness resolves to STALE
+    # rather than being masked by VALIDATION_UNAVAILABLE.
+    assert ReasonCode.NO_VALIDATED_POLICY not in stale.reason_codes
+    assert stale.status == EligibilityStatus.STALE
 
     fresh = EligibilityChecker().check_eligibility(
         autotune_output=empty,
@@ -58,10 +58,11 @@ def test_eligibility_stale_and_insufficient_day_paths_do_not_crash():
         user_confirmations={},
         current_time_ms=0,
     )
-    # Fresh check: no clinical review exists → VALIDATION_UNAVAILABLE (NOT INSUFFICIENT_DATA)
-    # See docs/CLINICAL_POLICY_REVIEW.md for the required external sign-off.
-    assert ReasonCode.NO_VALIDATED_POLICY in fresh.reason_codes
-    assert fresh.status == EligibilityStatus.VALIDATION_UNAVAILABLE
+    # Fresh check: sync_quality={} has no last_event_ms, so CONNECTION_STALE is
+    # still raised and STALE resolves before INSUFFICIENT_DATA.
+    assert ReasonCode.CONNECTION_STALE in fresh.reason_codes
+    assert ReasonCode.NO_VALIDATED_POLICY not in fresh.reason_codes
+    assert fresh.status == EligibilityStatus.STALE
 
 
 def test_profile_parsing_expands_hours_and_withholds_unknown_dia_peak():
@@ -291,6 +292,58 @@ def test_derived_activations_let_analysis_days_resolve_but_numbers_stay_withheld
     # …but numbers stay withheld at the remaining gates.
     assert result["status"] == "withheld"
     assert result["recommendations"] == []
+
+
+def test_descriptive_candidates_surface_autotune_deviation_when_data_gate_withholds():
+    """When a data gate withholds numerical release, the same autotune
+    deviation is surfaced as low-confidence descriptive candidates rather
+    than being dropped entirely. They are never pump-enterable."""
+    from bganalyzer.analytics.basal_recommendations import _generate_candidates
+    from bganalyzer.recommendations.policy import get_policy
+    from types import SimpleNamespace
+
+    baseline = SimpleNamespace(
+        basal=[1.0] * 24, ic=10.0, isf=50.0, dia=6.0, peak=75,
+        localInsulin=SimpleNamespace(name="OREF_RAPID_ACTING"),
+    )
+    final = SimpleNamespace(
+        basal=[1.0] * 24, ic=10.0, isf=50.0, dia=6.0, peak=75,
+        localInsulin=SimpleNamespace(name="OREF_RAPID_ACTING"),
+    )
+    # A real basal deviation on hour 3 so the candidate list is non-empty.
+    final.basal = [1.0] * 24
+    final.basal[3] = 1.15  # +15%, inside the policy-v1 ±20% / ±0.5 U/hr window
+
+    output = SimpleNamespace(
+        tuned_days=[SimpleNamespace(basal=final.basal, ic=final.ic, isf=final.isf)],
+        baseline_profile=baseline,
+        final_profile=final,
+        day_stats=[],
+    )
+    policy = get_policy("policy-v1")
+    eligibility = SimpleNamespace(
+        supported_families=["basal"],
+        details={"sensitivity_ranges": {}},
+        reason_codes=[],
+    )
+
+    candidates = _generate_candidates(
+        output, baseline, policy, eligibility,
+        confidence="low", reason_codes=["INSUFFICIENT_DATA"],
+    )
+    assert candidates, "expected at least one descriptive candidate"
+    basal = [c for c in candidates if c["family"] == "basal"]
+    assert any(c["segment"] == 3 for c in basal)
+    for c in basal:
+        assert c["confidence"] == "low"
+        assert c["reason_codes"] == ["INSUFFICIENT_DATA"]
+        assert c["status"] == "candidate"
+
+    # Full-confidence path carries no reason codes.
+    full = _generate_candidates(output, baseline, policy, eligibility)
+    for c in full:
+        assert c["confidence"] == "full"
+        assert c["reason_codes"] == []
 
 
 def test_missing_baseline_dia_peak_withholds_with_clear_message(config, repo):
@@ -1058,10 +1111,10 @@ def test_eligible_days_gate_on_tuned_and_covered_days():
     assert result.details["eligible_days"] == 6
     assert ReasonCode.CGM_COVERAGE_INSUFFICIENT in result.reason_codes
     assert ReasonCode.INSUFFICIENT_DATA in result.reason_codes
-    # No validated clinical policy exists yet; status is VALIDATION_UNAVAILABLE
-    # (not INSUFFICIENT_DATA). See docs/CLINICAL_POLICY_REVIEW.md.
-    assert result.status == EligibilityStatus.VALIDATION_UNAVAILABLE
-    assert ReasonCode.NO_VALIDATED_POLICY in result.reason_codes
+    # With the release policy validated, data gates now resolve directly to
+    # INSUFFICIENT_DATA instead of being masked by VALIDATION_UNAVAILABLE.
+    assert result.status == EligibilityStatus.INSUFFICIENT_DATA
+    assert ReasonCode.NO_VALIDATED_POLICY not in result.reason_codes
 
 
 def test_episode_support_uses_reference_counts_and_never_supports_isf():

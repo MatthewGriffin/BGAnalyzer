@@ -520,6 +520,18 @@ def build_basal_recommendations(snapshot, config, timezone, settings=None, cance
         # Eligibility inputs share the overlaid pump profile.
         user_confirmations = user_confirmations_early
 
+        # Policy is needed both for the descriptive low-confidence path below
+        # and for the numerical release gate that follows eligibility.
+        from bganalyzer.recommendations.policy import (
+            get_policy,
+            DEFAULT_POLICY_V1,
+            validated_policy_audit,
+            policy_fingerprint,
+        )
+        policy = get_policy(
+            settings.get("policy_version", "policy-v1") if settings else "policy-v1"
+        )
+
         # Real timelines for eligibility: the profile timeline now carries
         # derived inferred activations; the delivery timeline has partial
         # verification with temp-basal splitting and gap filling.
@@ -568,8 +580,12 @@ def build_basal_recommendations(snapshot, config, timezone, settings=None, cance
             delivery_issues.append(f"delivery resolution error: {str(e)}")
             delivery_quality = "error"
 
-        # Accept both verified and acceptable quality for use
-        delivery_verified = delivery_quality == "verified"
+        # Accept verified and acceptable quality for use. Assumed scheduled
+        # delivery (no temp basal recorded) is reported, not a blocker: it is
+        # a sync-coverage matter, not a reconstruction failure. Only
+        # unknown/conflicted intervals fail closed, matching the eligibility
+        # check in recommendations.eligibility._check_delivery_reconstruction.
+        delivery_verified = delivery_quality in ("verified", "acceptable")
         check(
             "delivery_verification",
             delivery_verified,
@@ -606,12 +622,28 @@ def build_basal_recommendations(snapshot, config, timezone, settings=None, cance
             result["message"] = f"Basal changes withheld: eligibility = {eligibility.status.value}"
             for rc in eligibility.reason_codes:
                 check(f"eligibility_{rc.value.lower()}", False, f"Eligibility blocked: {rc.value}")
+
+            # The autotune run already produced a final profile. When the run
+            # completed but the data gates withheld the numerical release, the
+            # raw deviation is still worth surfacing as a low-confidence
+            # descriptive suggestion: it is the same numbers the full pipeline
+            # would have validated, just without the evidence to stand behind
+            # them. Nothing here is pump-enterable; every candidate is marked
+            # explicitly and the reason codes are attached.
+            result["descriptive_candidates"] = _generate_candidates(
+                autotune_output,
+                analysis_snapshot.baseline_profile,
+                policy,
+                eligibility,
+                confidence="low",
+                reason_codes=[rc.value for rc in eligibility.reason_codes],
+            )
+            result["candidate_grid"] = _candidate_grid(
+                result["descriptive_candidates"], confidence="low"
+            )
             return result
 
         # Policy validation - clinical gate must pass before numerical output
-        from bganalyzer.recommendations.policy import get_policy, DEFAULT_POLICY_V1
-        import hashlib, json
-        policy = get_policy(settings.get("policy_version", "policy-v1") if settings else "policy-v1")
         if policy is None:
             result["message"] = "Basal changes withheld: no release policy installed."
             check("policy_installed", False, "No numerical release policy found.")
@@ -630,7 +662,6 @@ def build_basal_recommendations(snapshot, config, timezone, settings=None, cance
             result["message"] = f"Basal changes withheld: policy context invalid - {context_msg}"
             return result
 
-        from bganalyzer.recommendations.policy import validated_policy_audit, policy_fingerprint
         validated = validated_policy_audit(policy)
         result["policy_hash"] = policy_fingerprint(policy)
         check("numerical_release_policy", validated, "Release audit must match the current policy and the hashes of every evidence artifact.")
@@ -639,6 +670,7 @@ def build_basal_recommendations(snapshot, config, timezone, settings=None, cance
             return result
         candidates = _generate_candidates(autotune_output, analysis_snapshot.baseline_profile, policy, eligibility)
         result["recommendations"] = candidates
+        result["candidate_grid"] = _candidate_grid(candidates, confidence="full")
         result["status"] = "eligible"
         result["message"] = f"Generated {len(candidates)} candidate(s) from {len(autotune_output.tuned_days)} tuned days."
 
@@ -648,7 +680,14 @@ def build_basal_recommendations(snapshot, config, timezone, settings=None, cance
     return result
 
 
-def _generate_candidates(autotune_output, baseline_profile, policy: NumericalReleasePolicy, eligibility=None):
+def _generate_candidates(
+    autotune_output,
+    baseline_profile,
+    policy: NumericalReleasePolicy,
+    eligibility=None,
+    confidence: str = "full",
+    reason_codes: list | None = None,
+):
     """Generate recommendation candidates from autotune output.
 
     Applies policy bounds and quantization to produce pump-enterable values.
@@ -658,11 +697,18 @@ def _generate_candidates(autotune_output, baseline_profile, policy: NumericalRel
       - supported: whether the family had sufficient episode coverage (per §11)
       - sensitivity_min / sensitivity_max: LOO basal range bounds (basal only)
         derived from leave-one-day-out reruns; None when <2 days available
+      - confidence: "full" when the eligibility pipeline cleared every data
+        gate, or "low" when the same numbers are surfaced descriptively
+        because a data gate withheld numerical release. Low-confidence
+        candidates are never pump-enterable.
     """
     candidates = []
 
     if not autotune_output.tuned_days:
         return candidates
+
+    low_confidence = confidence == "low"
+    withholding_reasons = list(reason_codes or [])
 
     final = autotune_output.tuned_days[-1]
     baseline_basal = baseline_profile.basal
@@ -701,10 +747,14 @@ def _generate_candidates(autotune_output, baseline_profile, policy: NumericalRel
             candidates.append({
                 "family": "basal",
                 "segment": hour,
+                "time": f"{hour:02d}:00",
                 "baseline_value": baseline_rate,
                 "proposed_value": tuned_rate,
+                "direction": "n/a",
                 "status": "rejected",
                 "reason": msg,
+                "confidence": confidence,
+                "reason_codes": withholding_reasons,
             })
             continue
 
@@ -717,11 +767,21 @@ def _generate_candidates(autotune_output, baseline_profile, policy: NumericalRel
             candidates.append({
                 "family": "basal",
                 "segment": hour,
+                "time": f"{hour:02d}:00",
                 "baseline_value": baseline_rate,
                 "proposed_value": quantized,
+                "direction": "n/a",
                 "status": "rejected",
                 "reason": f"Quantized value rejected: {msg}",
+                "confidence": confidence,
+                "reason_codes": withholding_reasons,
             })
+            continue
+
+        # Quantization can round the deviation back onto the baseline (e.g.
+        # 1.5001 U/hr with a 0.05 U/hr pump step). That is no change, not a
+        # decrease, so skip it rather than advertising a zero-magnitude move.
+        if abs(quantized - baseline_rate) < 0.001:
             continue
 
         # LOO sensitivity bounds for this hour (None when <2 days available)
@@ -742,6 +802,8 @@ def _generate_candidates(autotune_output, baseline_profile, policy: NumericalRel
             "supported": basal_supported,
             "sensitivity_min": sensitivity_min,
             "sensitivity_max": sensitivity_max,
+            "confidence": confidence,
+            "reason_codes": withholding_reasons,
         })
 
 
@@ -769,24 +831,34 @@ def _generate_candidates(autotune_output, baseline_profile, policy: NumericalRel
                     "supported": ic_supported,
                     "sensitivity_min": ic_loo_range["min"] if ic_loo_range else None,
                     "sensitivity_max": ic_loo_range["max"] if ic_loo_range else None,
+                    "confidence": confidence,
+                    "reason_codes": withholding_reasons,
                 })
             else:
                 candidates.append({
                     "family": "ic",
                     "segment": "global",
+                    "time": None,
                     "baseline_value": baseline_ic,
                     "proposed_value": tuned_ic,
+                    "direction": "n/a",
                     "status": "rejected",
                     "reason": f"Quantized IC rejected: {msg}",
+                    "confidence": confidence,
+                    "reason_codes": withholding_reasons,
                 })
         else:
             candidates.append({
                 "family": "ic",
                 "segment": "global",
+                "time": None,
                 "baseline_value": baseline_ic,
                 "proposed_value": tuned_ic,
+                "direction": "n/a",
                 "status": "rejected",
                 "reason": msg,
+                "confidence": confidence,
+                "reason_codes": withholding_reasons,
             })
 
 
@@ -803,41 +875,164 @@ def _generate_candidates(autotune_output, baseline_profile, policy: NumericalRel
             quantized = policy.quantize_isf(tuned_isf)
             ok, msg = policy.validate_isf_change(baseline_isf, quantized)
             if ok:
-                candidates.append({
-                    "family": "isf",
-                    "segment": "global",
-                    "baseline_value": baseline_isf,
-                    "proposed_value": quantized,
-                    "raw_value": tuned_isf,
-                    "direction": "increase" if quantized > baseline_isf else "decrease",
-                    "status": "candidate",
-                    "contributing_days": n_contributing_days,
-                    "supported": False,  # ISF always unsupported: no correction episodes in reference
-                    "isf_limitation": isf_limitation or "reference defines no correction episodes; numeric ISF withheld",
-                    "sensitivity_min": isf_loo_range["min"] if isf_loo_range else None,
-                    "sensitivity_max": isf_loo_range["max"] if isf_loo_range else None,
-                })
+                if abs(quantized - baseline_isf) < 0.001:
+                    pass  # quantization rounded the change back onto baseline
+                else:
+                    candidates.append({
+                        "family": "isf",
+                        "segment": "global",
+                        "baseline_value": baseline_isf,
+                        "proposed_value": quantized,
+                        "raw_value": tuned_isf,
+                        "direction": "increase" if quantized > baseline_isf else "decrease",
+                        "status": "candidate",
+                        "contributing_days": n_contributing_days,
+                        "supported": False,  # ISF always unsupported: no correction episodes in reference
+                        "isf_limitation": isf_limitation or "reference defines no correction episodes; numeric ISF withheld",
+                        "sensitivity_min": isf_loo_range["min"] if isf_loo_range else None,
+                        "sensitivity_max": isf_loo_range["max"] if isf_loo_range else None,
+                        "confidence": confidence,
+                        "reason_codes": withholding_reasons,
+                    })
             else:
                 candidates.append({
                     "family": "isf",
                     "segment": "global",
+                    "time": None,
                     "baseline_value": baseline_isf,
                     "proposed_value": tuned_isf,
+                    "direction": "n/a",
                     "status": "rejected",
                     "reason": f"Quantized ISF rejected: {msg}",
+                    "confidence": confidence,
+                    "reason_codes": withholding_reasons,
                 })
         else:
             candidates.append({
                 "family": "isf",
                 "segment": "global",
+                "time": None,
                 "baseline_value": baseline_isf,
                 "proposed_value": tuned_isf,
+                "direction": "n/a",
                 "status": "rejected",
                 "reason": msg,
+                "confidence": confidence,
+                "reason_codes": withholding_reasons,
             })
 
 
     return candidates
+
+
+def _candidate_grid(candidates, confidence="full"):
+    """Fold a candidate list into a compact grid keyed by family and segment.
+
+    The full report is a wall of text; the suggestions are the part the user
+    actually acts on. This gathers every candidate into one structure keyed by
+    ("basal", hour), ("ic", "global"), ("isf", "global") so the UI can render a
+    table instead of a paragraph. Rejected entries keep their reason so the
+    grid is self-explanatory.
+    """
+    grid = {}
+    for c in candidates or []:
+        family = c.get("family")
+        segment = c.get("segment")
+        if family == "basal":
+            key = ("basal", int(segment))
+        elif family in ("ic", "isf"):
+            key = (family, "global")
+        else:
+            key = (family, str(segment))
+        grid[key] = {
+            "family": family,
+            "segment": segment,
+            "time": c.get("time"),
+            "baseline_value": c.get("baseline_value"),
+            "proposed_value": c.get("proposed_value"),
+            "raw_value": c.get("raw_value"),
+            "direction": c.get("direction"),
+            "status": c.get("status"),
+            "reason": c.get("reason"),
+            "contributing_days": c.get("contributing_days"),
+            "supported": c.get("supported"),
+            "sensitivity_min": c.get("sensitivity_min"),
+            "sensitivity_max": c.get("sensitivity_max"),
+            "confidence": c.get("confidence", confidence),
+            "reason_codes": c.get("reason_codes", []),
+        }
+    return {f"{family}:{segment}": v for (family, segment), v in sorted(grid.items())}
+
+
+def _merge_basal_ranges(candidates):
+    """Merge consecutive basal hours that share the same proposed rate.
+
+    A pump profile is entered as one rate per hour, but a flat segment such as
+    hours 20-23 all moving to 1.325 U/hr reads better as a range than as four
+    identical rows. Only candidate rows are merged; rejected rows are emitted
+    individually since each carries its own reason.
+    """
+    basal = sorted(
+        (c for c in candidates or [] if c.get("family") == "basal"
+         and c.get("status") == "candidate"),
+        key=lambda c: int(c.get("segment", 0)),
+    )
+    merged = []
+    for c in basal:
+        hour = int(c.get("segment", 0))
+        # Group on the rounded two-decimal rate that the pump actually
+        # accepts, not the raw quantized float. Exact float equality between
+        # values that both went through round(x, 2) can still differ by a
+        # ULP, which would otherwise split one flat segment into two rows.
+        proposed = round(float(c.get("proposed_value", 0)), 2)
+        if merged and merged[-1]["end"] == hour - 1 \
+                and abs(merged[-1]["proposed"] - proposed) < 1e-9:
+            merged[-1]["end"] = hour
+            continue
+        merged.append({
+            "start": hour,
+            "end": hour,
+            "proposed": proposed,
+            "baseline": round(float(c.get("baseline_value", 0)), 2),
+            "direction": c.get("direction"),
+            "status": c.get("status"),
+        })
+
+    # Build one time-ordered list. Merged candidates come first, then rejected
+    # basal entries, then the IC/ISF scalars — all sorted by hour so a gap
+    # between hours 1 and 4 is visible rather than hidden at the end.
+    rows = []
+    for m in merged:
+        if m["start"] == m["end"]:
+            rows.append({**m, "range": f"Basal {m['start']:02d}:00"})
+        else:
+            rows.append({**m, "range": f"Basal {m['start']:02d}:00–{m['end']:02d}:00"})
+    for c in candidates or []:
+        if c.get("family") == "basal" and c.get("status") == "rejected":
+            rows.append({
+                "start": int(c.get("segment", 0)),
+                "end": int(c.get("segment", 0)),
+                "proposed": round(float(c.get("proposed_value", 0)), 2),
+                "baseline": round(float(c.get("baseline_value", 0)), 2),
+                "direction": c.get("direction"),
+                "status": c.get("status"),
+                "range": f"Basal {int(c.get('segment', 0)):02d}:00",
+            })
+    rows.sort(key=lambda r: r.get("start") if r.get("start") is not None else 99)
+
+    # IC and ISF scalars pass through unchanged, appended after the hourly rows.
+    for c in candidates or []:
+        if c.get("family") in ("ic", "isf"):
+            rows.append({
+                "start": None,
+                "end": None,
+                "proposed": c.get("proposed_value"),
+                "baseline": c.get("baseline_value"),
+                "direction": c.get("direction"),
+                "status": c.get("status"),
+                "range": f"{c.get('family', '').upper()} (global)",
+            })
+    return rows
 
 
 def format_readiness(result):
@@ -992,6 +1187,24 @@ def format_readiness(result):
                     f"  ISF (global): {c['baseline_value']:.1f} → {c['proposed_value']:.1f} mg/dL/U "
                     f"({c['direction']}) [{c['status']}]"
                 )
+        lines.append("")
+
+    # Show candidates as a compact grid. Consecutive hours sharing the same
+    # proposed rate are merged into a range (e.g. hours 20-23 at 1.325 U/hr)
+    # rather than listing four identical rows.
+    candidates = result.get("recommendations", [])
+    descriptive = result.get("descriptive_candidates", [])
+    if candidates or descriptive:
+        lines.append("Basal suggestions (confidence=full):")
+        for label, conf in (("candidates", "full"), ("descriptive_candidates", "low")):
+            rows = candidates if label == "candidates" else descriptive
+            if not rows:
+                continue
+            lines.append(f"  [{label}]")
+            merged = _merge_basal_ranges(rows)
+            for row in merged:
+                lines.append(f"    {row['range']}: {row['baseline']:.3f} → {row['proposed']:.3f} U/hr ({row['direction']}) [{row['status']}]")
+            lines.append("")
         lines.append("")
 
     # Show gaps
