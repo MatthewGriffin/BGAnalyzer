@@ -37,4 +37,17 @@
     <string name="stat_readings">%1$d readings, %2$d%% of the period covered</string>
     <string name="stat_low_coverage">Less than 70%% of readings are available for this period, so these numbers may not represent it well.</string>
     <string name="chart_no_data">No readings in this period. Sync to load them.</string>
+    <string name="tab_backup">Backup</string>
+    <string name="backup_title">Backup</string>
+    <string name="backup_intro">Save everything this app holds (the connection and all stored readings) to one encrypted file, and restore it later, for example after reinstalling. Keep the file somewhere safe, and remember the passphrase: it cannot be recovered. Restoring adds readings and never deletes any.</string>
+    <string name="backup_passphrase_label">Passphrase</string>
+    <string name="backup_passphrase_hint">At least %1$d characters. Needed to restore.</string>
+    <string name="backup_save">Save backup</string>
+    <string name="backup_restore">Restore from backup</string>
+    <string name="backup_working">Working…</string>
+    <string name="backup_saved">Backup saved. %1$d readings and the connection are in it.</string>
+    <string name="backup_restored">Restored %1$d readings.</string>
+    <string name="backup_restored_connection">The saved connection was restored. Check it on the Connection tab.</string>
+    <string name="backup_restored_no_connection">The backup had no connection, so the current one was kept.</string>
+    <string name="backup_failed">Backup failed</string>
 </resources>

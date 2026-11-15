@@ -15,6 +15,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import app.bganalyzer.ui.BackupScreen
+import app.bganalyzer.ui.BackupViewModel
 import app.bganalyzer.ui.GlucoseScreen
 import app.bganalyzer.ui.GlucoseViewModel
 import androidx.compose.runtime.collectAsState
@@ -36,6 +38,7 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val glucose: GlucoseViewModel by viewModels()
+    private val backup: BackupViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,9 +48,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             BGAnalyzerTheme {
                 val count by readingCount.collectAsState(initial = 0)
-                var uri by remember { mutableStateOf(store.uri) }
-                var database by remember { mutableStateOf(store.database) }
-                var followAddress by remember { mutableStateOf(store.database.isBlank()) }
+                val restores by backup.restoreCount.collectAsState()
+                val backupState by backup.state.collectAsState()
+                // After a restore, reload the connection fields from storage instead of keeping stale text.
+                var uri by remember(restores) { mutableStateOf(store.uri) }
+                var database by remember(restores) { mutableStateOf(store.database) }
+                var followAddress by remember(restores) { mutableStateOf(store.database.isBlank()) }
                 var testState by remember { mutableStateOf<TestState>(TestState.Idle) }
                 val scope = rememberCoroutineScope()
                 var tab by rememberSaveable { mutableStateOf(0) }
@@ -56,7 +62,7 @@ class MainActivity : ComponentActivity() {
                 Scaffold(
                     bottomBar = {
                         NavigationBar {
-                            listOf(R.string.tab_glucose, R.string.tab_connection).forEachIndexed { i, label ->
+                            listOf(R.string.tab_glucose, R.string.tab_connection, R.string.tab_backup).forEachIndexed { i, label ->
                                 NavigationBarItem(
                                     selected = tab == i,
                                     onClick = { tab = i; if (i == 0) glucose.refreshWindow() },
@@ -78,6 +84,10 @@ class MainActivity : ComponentActivity() {
                             onUnitChange = glucose::setUnit,
                             onSync = glucose::sync,
                         )
+                    }
+                } else if (tab == 2) {
+                    Box(Modifier.padding(inner)) {
+                        BackupScreen(backupState, onSave = backup::save, onRestore = backup::restore)
                     }
                 } else Box(Modifier.padding(inner)) {
                 ConnectionScreen(

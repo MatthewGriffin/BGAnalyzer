@@ -19,15 +19,15 @@ import javax.crypto.spec.GCMParameterSpec
  * the cipher format, and do not change `applicationId`, without a migration that reads the old values first.
  * `ConnectionStoreTest` pins the names.
  */
-class ConnectionStore(context: Context) {
+class ConnectionStore(context: Context) : app.bganalyzer.backup.ConnectionSettings {
     private val prefs = context.applicationContext.getSharedPreferences("connection", Context.MODE_PRIVATE)
 
-    var database: String
+    override var database: String
         get() = prefs.getString(KEY_DATABASE, "") ?: ""
         set(value) = prefs.edit { putString(KEY_DATABASE, value) }
 
     /** The stored address, or an empty string when none is stored or it can no longer be decrypted. */
-    var uri: String
+    override var uri: String
         get() {
             val stored = prefs.getString(KEY_URI, null) ?: return ""
             return runCatching {
