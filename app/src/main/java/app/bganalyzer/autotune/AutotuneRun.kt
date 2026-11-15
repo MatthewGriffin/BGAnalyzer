@@ -49,7 +49,7 @@ object AutotuneRun {
     /**
      * Tunes [baseline] over the [daysBack] windows ending at [endMs], oldest first, each day starting from the profile the
      * previous day produced and bounded by [baseline] and [limits]. A day with no usable data, or for which [skipDate]
-     * is true (excluded days), is skipped and reported, and the run carries on. [progress] gets (day, daysBack).
+     * is true (excluded days), is skipped and reported, and the run carries on. Days starting before [notBeforeMs] are skipped with [notBeforeReason]. [progress] gets (day, daysBack).
      */
     fun run(
         data: AutotuneData,
@@ -60,6 +60,8 @@ object AutotuneRun {
         daysBack: Int,
         options: PrepOptions = PrepOptions(),
         skipDate: (String) -> Boolean = { false },
+        notBeforeMs: Long? = null,
+        notBeforeReason: String = "before a profile change",
         progress: (Int, Int) -> Unit = { _, _ -> },
     ): AutotuneResult {
         require(daysBack in 1..90) { "days back must be 1 to 90" }
@@ -77,6 +79,8 @@ object AutotuneRun {
             val from = windowStart.toInstant().toEpochMilli()
             val to = windowEnd.toInstant().toEpochMilli()
             val date = windowStart.toLocalDate().toString()
+            // a day that began before the profile last changed was run on other settings: its data says nothing about the new ones
+            if (notBeforeMs != null && from < notBeforeMs) { skipped += SkippedDay(date, notBeforeReason); continue }
             if (skipDate(date)) { skipped += SkippedDay(date, "marked as bad data"); continue }
 
             val lookback = (tuned.dia * HOUR_MS).toLong() + 2 * HOUR_MS

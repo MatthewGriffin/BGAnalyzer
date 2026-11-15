@@ -70,4 +70,26 @@ class AutotuneSimulationTest {
         assertTrue("ISF ${r.tuned.isf}", r.tuned.isf in isf * 0.8..isf * 1.2)
         assertTrue("carb ratio ${r.tuned.ic}", r.tuned.ic in ic * 0.8..ic * 1.2)
     }
+
+    @Test fun rerunningTheSameDaysFromTheAppliedResultMovesTheValuesFurther() {
+        // This is why days run on the old profile must not be replayed again: each run starts from its input profile.
+        val data = simulate(false)
+        val first = AutotuneRun.run(data, profile, AutotuneLimits(), zone, end, 7)
+        val second = AutotuneRun.run(data, first.tuned, AutotuneLimits(), zone, end, 7)
+        val night = listOf(23, 0, 1, 2)
+        assertTrue(night.sumOf { second.tuned.basal[it] } > night.sumOf { first.tuned.basal[it] } + 0.01)
+    }
+
+    @Test fun afterAProfileChangeOnlyLaterDaysAreUsedSoNothingDriftsFurther() {
+        val data = simulate(false)
+        val first = AutotuneRun.run(data, profile, AutotuneLimits(), zone, end, 7)
+        // the tuned values were applied at the end of the data: no day starts after that
+        val again = AutotuneRun.run(data, first.tuned, AutotuneLimits(), zone, end, 7, notBeforeMs = end, notBeforeReason = "before your profile change")
+        assertEquals(0, again.daysTuned)
+        assertEquals(first.tuned, again.tuned)
+        assertTrue(again.skipped.all { it.reason == "before your profile change" })
+        // a change midway keeps only the days that started after it
+        val midway = AutotuneRun.run(data, profile, AutotuneLimits(), zone, end, 7, notBeforeMs = origin + 5 * day + 4 * hour)
+        assertEquals(4, midway.daysTuned) // the seven windows start 3 to 9 Nov at 04:00; those from 6 Nov 04:00 on are kept
+    }
 }

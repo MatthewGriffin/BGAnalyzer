@@ -185,5 +185,6 @@
     <string name="autotune_total">Total U/day</string>
     <string name="autotune_row_isf">ISF (%1$s per U)</string>
     <string name="autotune_row_cr">Carb ratio (g per U)</string>
+    <string name="autotune_since_change">Only days run on your current profile are used: it last changed on %1$s. Days before that are skipped, so applying a result and re-running does not move the values on again from old data.</string>
     <string name="autotune_syncing">Syncing the latest data first. Run autotune when it finishes.</string>
 </resources>
