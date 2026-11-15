@@ -75,13 +75,19 @@ fun GlucoseChart(
         val path = Path()
         var prev: ChartPoint? = null
         val dots = ArrayList<Offset>()
+        var lastX = Float.NEGATIVE_INFINITY
         for (p in points) {
             val px = x(p.timeMs)
             val py = y(p.mgdl.coerceIn(yMin, yMax))
             if (prev == null || p.timeMs - prev.timeMs > GAP_MS) {
                 path.moveTo(px, py)
                 dots.add(Offset(px, py))
-            } else path.lineTo(px, py)
+                lastX = px
+            } else if (px - lastX >= 1f) {
+                // Long periods hold far more readings than pixels, so draw at most one point per pixel column.
+                path.lineTo(px, py)
+                lastX = px
+            }
             prev = p
         }
         drawPath(path, line, style = Stroke(width = 1.5.dp.toPx()))
