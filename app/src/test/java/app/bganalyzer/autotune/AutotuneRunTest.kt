@@ -89,3 +89,19 @@ class NoInsulinDayTest {
         assertTrue(r.skipped.all { it.reason.startsWith("no insulin records") })
     }
 }
+
+class BasalBlocksTest {
+    private fun hours(f: (Int) -> Double) = (0..23).map { app.bganalyzer.autotune.HourAdvice(it, 1.0, f(it), f(it), null, app.bganalyzer.domain.Confidence.MEDIUM) }
+
+    @Test fun ratesAreRoundedToThePumpStep() {
+        assertEquals(1.05, AutotuneAdvisor.roundToPumpStep(1.062), 1e-9)
+        assertEquals(1.1, AutotuneAdvisor.roundToPumpStep(1.08), 1e-9)
+    }
+
+    @Test fun equalNeighbouringHoursAreMerged() {
+        val b = AutotuneAdvisor.blocks(hours { if (it < 3) 1.01 else if (it < 9) 0.62 else 1.0 })
+        assertEquals(listOf(0 to 3, 3 to 9, 9 to 24), b.map { it.startHour to it.endHour })
+        assertEquals(listOf(1.0, 0.60, 1.0), b.map { it.rate })
+        assertEquals(24, b.sumOf { it.endHour - it.startHour })
+    }
+}

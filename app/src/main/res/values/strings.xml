@@ -126,7 +126,7 @@
     <string name="profile_changes_title">Profile switches in this period</string>
     <string name="profile_changes_none">No profile switches in this period. The comparison uses the profile in force when the period began.</string>
     <string name="profile_changes_more">%1$d earlier switches not shown.</string>
-    <string name="suggestions_title">Suggestions</string>
+    <string name="suggestions_title">Quick hints from patterns</string>
     <string name="suggestions_intro">Ideas only. The app never changes a setting. Each change is capped at a small step, lows in a time of day stop increases there, and a number needs enough days or meals that agree. Check with your care team before changing settings.</string>
     <string name="suggestions_gaps">%1$d days have no data from Nightscout, so confidence is lower. Sync this period first to fill what can be filled.</string>
     <string name="suggestions_none">No suggestions: the data shows no consistent pattern, or there is not enough of it yet.</string>
@@ -150,7 +150,7 @@
     <string name="changes_before">Before</string>
     <string name="changes_after">After</string>
     <string name="changes_line">%1$s (%2$s days): %3$s%% in range, %4$s%% below, %5$s%% above</string>
-    <string name="autotune_title">Autotune (experimental)</string>
+    <string name="autotune_title">Autotune</string>
     <string name="autotune_intro">A port of the AndroidAPS autotune: it replays recent days (4 AM to 4 AM) against your insulin and carb records and shows what basal, sensitivity and carb ratio would have fitted. Advice only, nothing is changed. It reads the data saved in the app, so sync first. Changes are limited to the AAPS autosens limits (up to +20% / down to -30% of your profile), and a basal increase is held back in any hour where glucose goes low.</string>
     <string name="autotune_days_label">Days to replay</string>
     <string name="autotune_run">Run autotune</string>
@@ -161,7 +161,7 @@
     <string name="autotune_isf">Sensitivity (ISF): %1$s -> %2$s %3$s per unit</string>
     <string name="autotune_cr">Carb ratio: %1$s -> %2$s g per unit</string>
     <string name="autotune_isf_cr_note">Autotune uses one value for the whole day, so these are daily averages of your profile.</string>
-    <string name="autotune_basal">Basal by hour (current -> suggested, confidence)</string>
+    <string name="autotune_basal">Basal by hour</string>
     <string name="autotune_basal_note">Low confidence means few days, or hours with little usable data that were filled in from their neighbours.</string>
     <string name="autotune_held">Held at the current rate. Autotune wanted %1$s U/h, but %2$s.</string>
     <string name="autotune_clear">Clear result</string>
@@ -186,4 +186,22 @@
     <string name="no_insulin_button">Exclude these days</string>
     <string name="autotune_evidence">Based on %1$d meals and %2$d insulin-only readings.</string>
     <string name="autotune_evidence_low">That is little data: treat the carb ratio and sensitivity as low confidence.</string>
+    <string name="tab_autotune">Autotune</string>
+    <string name="autotune_idle">Choose how many days to replay and press Run. Only days with insulin records are used.</string>
+    <string name="autotune_insulin_short_label">Insulin</string>
+    <string name="autotune_insulin_rapid_short">Rapid (75 min)</string>
+    <string name="autotune_insulin_ultra_short">Ultra-rapid (55 min)</string>
+    <string name="autotune_insulin_lyumjev_short">Lyumjev (45 min)</string>
+    <string name="autotune_col_time">Time</string>
+    <string name="autotune_col_now">Now</string>
+    <string name="autotune_col_suggested">Suggested</string>
+    <string name="autotune_col_change">Change</string>
+    <string name="autotune_col_confidence">Confidence</string>
+    <string name="autotune_col_rate">U/h</string>
+    <string name="autotune_total">Total U/day</string>
+    <string name="autotune_row_isf">ISF (%1$s per U)</string>
+    <string name="autotune_row_cr">Carb ratio (g per U)</string>
+    <string name="autotune_blocks">Basal as profile entries</string>
+    <string name="autotune_blocks_note">The suggested basal with equal neighbouring hours merged, rounded to 0.05 U/h: the entries to type into a new profile.</string>
+    <string name="suggestions_secondary_note">These are simple pattern rules. Autotune (next tab) is the main advice and is more reliable.</string>
 </resources>
