@@ -18,3 +18,7 @@ On-device tests run on a connected phone or emulator. See `app/src/androidTest/j
 - `reference/`: unmodified AndroidAPS sources used as the reference for ported logic (AGPL-3.0).
 
 The earlier Python desktop app is no longer developed. Its final state is on the `desktop-final` branch.
+
+## Licence
+
+AGPL-3.0 (see `LICENSE`). The autotune code in `app/src/main/java/app/bganalyzer/autotune/` is ported from AndroidAPS 3.4.2.1 and carries its licence. The repository is private; if it is ever shared, it will be as source only for people to build themselves.
