@@ -164,7 +164,21 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private var lastAutoSyncMs = 0L
+
+    /**
+     * Used when the Patterns tab opens so suggestions are based on a complete period. Skips quietly when there is no
+     * connection, a sync is running, or one finished less than ten minutes ago.
+     */
+    fun syncIfStale(days: Int) {
+        val now = System.currentTimeMillis()
+        if (!hasConnection || _sync.value is SyncState.Running || now - lastAutoSyncMs < AUTO_SYNC_GAP_MS) return
+        lastAutoSyncMs = now
+        sync(days)
+    }
+
     private companion object {
+        const val AUTO_SYNC_GAP_MS = 10L * 60 * 1000
         const val DAY_MS = 24L * 60 * 60 * 1000
         const val BASAL_LOOKBACK_MS = 12L * 60 * 60 * 1000
     }
