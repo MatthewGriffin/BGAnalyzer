@@ -221,12 +221,6 @@ private fun ChangesTimeline(state: PatternsState) {
         // temporary profile switches are not compared (they end on their own), but they belong on the timeline
         state.profileChanges.filter { it.isTemporary }.forEach { add(TimelineEntry(it.startMs, "Profile: " + it.label(), null, null, null, null)) }
     }
-        // Several switches minutes apart (editing a profile) leave windows with no data and no basal change: nothing to show
-        .filterNot { e ->
-            val b = e.before; val a = e.after
-            e.basalBefore != null && e.basalAfter != null && kotlin.math.abs(e.basalBefore - e.basalAfter) < 0.005 &&
-                b != null && a != null && !(b.enough && a.enough)
-        }
         .sortedByDescending { it.timeMs }
     Text(stringResource(R.string.timeline_title), style = MaterialTheme.typography.titleMedium)
     if (entries.isEmpty()) {
