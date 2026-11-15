@@ -5,6 +5,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.bganalyzer.R
 import app.bganalyzer.data.AppDatabase
+import app.bganalyzer.data.GlucoseReadingEntity
+import app.bganalyzer.domain.BasalSegment
+import app.bganalyzer.domain.BasalTimeline
 import app.bganalyzer.data.TreatmentEntity
 import app.bganalyzer.domain.PostMeal
 import app.bganalyzer.domain.GlucoseUnit
@@ -32,12 +35,9 @@ sealed interface SyncState {
     data class Failed(val message: String) : SyncState
 }
 
-/** One chart point: time and mg/dL. */
-data class ChartPoint(val timeMs: Long, val mgdl: Double)
-
 data class GlucoseUiState(
     val days: Int = 7,
-    val points: List<ChartPoint> = emptyList(),
+    val points: List<GlucoseReadingEntity> = emptyList(),
     val timeInRange: TimeInRange = TimeInRange.EMPTY,
     val fromMs: Long = 0,
     val toMs: Long = 0,
@@ -48,6 +48,8 @@ data class GlucoseUiState(
     val carbsTotal: Double = 0.0,
     /** All insulin from bolus records in the period, including automatic micro-boluses. Basal is not included. */
     val bolusInsulinTotal: Double = 0.0,
+    /** Basal over the period: temp basals, with the profile schedule where none was running. */
+    val basal: List<BasalSegment> = emptyList(),
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -67,14 +69,19 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
         .flatMapLatest { (d, u) ->
             val to = System.currentTimeMillis()
             val from = to - d * DAY_MS
-            combine(dao.observeSince(from), db.treatmentDao().observeValidSince(from)) { rows, treatments ->
-                val points = rows.map { ChartPoint(it.timestampMs, it.mgdl) }
+            // A temp basal that started before the window can still be running at its start, so look back 12 hours.
+            combine(dao.observeSince(from), db.treatmentDao().observeValidSince(from - BASAL_LOOKBACK_MS)) { rows, all ->
+                val treatments = all.filter { it.timestampMs >= from }
                 val meals = PostMeal.meals(treatments)
+                val profiles = db.profileDao().all()
+                val zone = profiles.lastOrNull()?.timezone?.let { runCatching { java.time.ZoneId.of(it) }.getOrNull() }
+                    ?: java.time.ZoneId.systemDefault()
                 GlucoseUiState(
-                    d, points, TimeInRange.of(points.map { it.mgdl }), from, to, u, treatments,
+                    d, rows, TimeInRange.of(rows.map { it.mgdl }), from, to, u, treatments,
                     mealCount = meals.size,
                     carbsTotal = meals.sumOf { it.carbs },
                     bolusInsulinTotal = treatments.sumOf { (it.insulin ?: 0.0).coerceAtLeast(0.0) },
+                    basal = BasalTimeline.build(all, profiles, from, to, zone),
                 )
             }
         }
@@ -112,5 +119,6 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val DAY_MS = 24L * 60 * 60 * 1000
+        const val BASAL_LOOKBACK_MS = 12L * 60 * 60 * 1000
     }
 }
