@@ -10,9 +10,12 @@ import app.bganalyzer.domain.BlockStats
 import app.bganalyzer.domain.EffectiveProfile
 import app.bganalyzer.domain.ProfileResolver
 import app.bganalyzer.domain.ProfileTimeline
+import app.bganalyzer.domain.FastingDrift
 import app.bganalyzer.domain.GlucoseUnit
 import app.bganalyzer.domain.MealBlockStats
 import app.bganalyzer.domain.PostMeal
+import app.bganalyzer.domain.SuggestionResult
+import app.bganalyzer.domain.Suggestions
 import app.bganalyzer.domain.TimeBlocks
 import app.bganalyzer.sync.DataChecks
 import app.bganalyzer.sync.EmptyRange
@@ -46,6 +49,7 @@ data class PatternsState(
     val emptyDays: List<EmptyRange> = emptyList(),
     /** Profile switches in the period, oldest first. */
     val profileChanges: List<EffectiveProfile> = emptyList(),
+    val suggestions: SuggestionResult = SuggestionResult(emptyList(), emptyList()),
 )
 
 class PatternsViewModel(app: Application) : AndroidViewModel(app) {
@@ -65,13 +69,27 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                     val readings = db.glucoseReadingDao().between(from, to)
                     val resolver = ProfileResolver(ProfileTimeline.entries(db.treatmentDao().profileEvents()), db.profileDao().all())
                     val treatments = db.treatmentDao().validBetween(from - 12 * 3_600_000L, to)
+                    val blockStats = TimeBlocks.analyze(readings, zone, b)
+                    val mealStats = PostMeal.analyze(readings, PostMeal.meals(treatments).filter { it.timeMs >= from }, zone, b)
+                    val basalStats = BasalComparison.analyze(treatments, resolver, from, to, zone, b)
                     emit(
                         PatternsState(
                             d, b, true, readings.size, zone.id,
-                            TimeBlocks.analyze(readings, zone, b),
-                            PostMeal.analyze(readings, PostMeal.meals(treatments).filter { it.timeMs >= from }, zone, b),
+                            blockStats,
+                            mealStats,
                             unsyncedMs = SyncPlanner.unsyncedMs(coverage.map { it.source to Span(it.startMs, it.endMs) }, Span(from, to)),
-                            basal = BasalComparison.analyze(treatments, resolver, from, to, zone, b),
+                            basal = basalStats,
+                            suggestions = Suggestions.generate(
+                                blockStats, mealStats, basalStats,
+                                FastingDrift.analyze(readings, treatments, zone, b),
+                                (0 until 24 step b).associateWith { h ->
+                                    val day = java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(to), zone)
+                                    val rates = (0 until b * 4).mapNotNull { q ->
+                                        resolver.basalAt(day.atStartOfDay(zone).plusHours(h.toLong()).plusMinutes(q * 15L).toInstant().toEpochMilli(), zone)
+                                    }
+                                    if (rates.isEmpty()) 0.0 else rates.average()
+                                },
+                            ),
                             profileChanges = resolver.changes(from, to),
                             emptyDays = run {
                                 val period = Span(from, to)

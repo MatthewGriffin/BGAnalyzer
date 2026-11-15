@@ -126,4 +126,14 @@
     <string name="profile_changes_title">Profile switches in this period</string>
     <string name="profile_changes_none">No profile switches in this period. The comparison uses the profile in force when the period began.</string>
     <string name="profile_changes_more">%1$d earlier switches not shown.</string>
+    <string name="suggestions_title">Suggestions</string>
+    <string name="suggestions_intro">Ideas only. The app never changes a setting. Each change is capped at a small step, lows in a time of day stop increases there, and a number needs enough days or meals that agree. Check with your care team before changing settings.</string>
+    <string name="suggestions_gaps">%1$d days have no data from Nightscout, so confidence is lower. Sync this period first to fill what can be filled.</string>
+    <string name="suggestions_none">No suggestions: the data shows no consistent pattern, or there is not enough of it yet.</string>
+    <string name="suggestions_basal">Basal</string>
+    <string name="suggestions_carb_ratio">Carb ratio</string>
+    <string name="suggestions_more">More insulin: about %1$d%%</string>
+    <string name="suggestions_less">Less insulin: about %1$d%%</string>
+    <string name="suggestions_confidence">Confidence: %1$s</string>
+    <string name="suggestions_held">Held back, %1$s %2$s-%3$s: %4$s</string>
 </resources>
