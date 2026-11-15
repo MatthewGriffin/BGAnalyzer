@@ -192,11 +192,8 @@
     <string name="autotune_col_suggested">Suggested</string>
     <string name="autotune_col_change">Change</string>
     <string name="autotune_col_confidence">Confidence</string>
-    <string name="autotune_col_rate">U/h</string>
     <string name="autotune_total">Total U/day</string>
     <string name="autotune_row_isf">ISF (%1$s per U)</string>
     <string name="autotune_row_cr">Carb ratio (g per U)</string>
-    <string name="autotune_blocks">Basal as profile entries</string>
-    <string name="autotune_blocks_note">The suggested basal with equal neighbouring hours merged, rounded to 0.05 U/h: the entries to type into a new profile.</string>
     <string name="autotune_syncing">Syncing the latest data first. Run autotune when it finishes.</string>
 </resources>

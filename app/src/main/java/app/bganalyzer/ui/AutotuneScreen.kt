@@ -163,18 +163,5 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
         }
     }
 
-    // The same suggested basal as profile entries
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp)) {
-            Text(stringResource(R.string.autotune_blocks), style = MaterialTheme.typography.titleSmall)
-            Text(stringResource(R.string.autotune_blocks_note), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 4.dp))
-            val w = listOf(1.6f, 1f)
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            TableRow(listOf(stringResource(R.string.autotune_col_time), stringResource(R.string.autotune_col_rate)), w, header = true)
-            AutotuneAdvisor.blocks(a.hours).forEach { b ->
-                TableRow(listOf("${hourLabel(b.startHour)} - ${hourLabel(b.endHour)}", rate(b.rate)), w, colours = listOf(null, null))
-            }
-        }
-    }
     TextButton(onClick = onClear) { Text(stringResource(R.string.autotune_clear)) }
 }
