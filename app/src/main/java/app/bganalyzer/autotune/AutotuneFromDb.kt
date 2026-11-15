@@ -48,9 +48,9 @@ object AutotuneFromDb {
         if (result.daysTuned == 0) {
             return Outcome.Failed("No day had enough data. Skipped: " + result.skipped.joinToString { "${it.date} (${it.reason})" })
         }
-        return // the low-glucose guard looks only at the days that were used, not at skipped (no insulin, excluded) days
+        // the low-glucose guard looks only at the days that were used, not at skipped (no insulin, excluded) days
         val skippedDates = result.skipped.map { it.date }.toSet()
         val usedReadings = readings.filter { java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(it.timeMs - AutotuneRun.START_HOUR * HOUR_MS), zone).toString() !in skippedDates }
-        Outcome.Done(AutotuneAdvisor.advise(result, usedReadings, zone), result)
+        return Outcome.Done(AutotuneAdvisor.advise(result, usedReadings, zone), result)
     }
 }
