@@ -13,9 +13,9 @@
     <string name="connection_ok_no_entries">No glucose entries found. Check the database name.</string>
     <string name="connection_failed_title">Connection failed</string>
     <string name="connection_stored_count">%1$d readings stored on this device</string>
-    <string name="tab_glucose">Glucose</string>
+    <string name="tab_glucose">Overview</string>
     <string name="tab_connection">Connection</string>
-    <string name="glucose_title">Glucose</string>
+    <string name="glucose_title">Overview</string>
     <string name="sync_button">Sync now</string>
     <string name="sync_running">Syncing… %1$d readings</string>
     <string name="sync_done">Synced. Checked %1$d readings, %2$d treatments and %3$d profiles.</string>
