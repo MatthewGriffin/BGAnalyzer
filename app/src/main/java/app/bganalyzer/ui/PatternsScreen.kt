@@ -78,6 +78,7 @@ fun PatternsScreen(
                     modifier = Modifier.weight(1f),
                 )
             }
+            EmptyDaysNotice(state.emptyDays)
             if (state.loaded && state.readingCount == 0) {
                 Text(stringResource(R.string.patterns_no_data))
                 return@Column

@@ -11,6 +11,9 @@ import app.bganalyzer.domain.GlucoseUnit
 import app.bganalyzer.domain.MealBlockStats
 import app.bganalyzer.domain.PostMeal
 import app.bganalyzer.domain.TimeBlocks
+import app.bganalyzer.sync.DataChecks
+import app.bganalyzer.sync.EmptyRange
+import app.bganalyzer.sync.Sources
 import app.bganalyzer.sync.Span
 import app.bganalyzer.sync.SyncPlanner
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +39,8 @@ data class PatternsState(
     val unsyncedMs: Long = 0,
     /** How the loop's temp basals compared with the profile's scheduled basal; null until loaded. */
     val basal: BasalComparisonResult? = null,
+    /** Days Nightscout returned (almost) nothing for, although the app asked. */
+    val emptyDays: List<EmptyRange> = emptyList(),
 )
 
 class PatternsViewModel(app: Application) : AndroidViewModel(app) {
@@ -61,6 +66,13 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                             PostMeal.analyze(readings, PostMeal.meals(treatments).filter { it.timeMs >= from }, zone, b),
                             unsyncedMs = SyncPlanner.unsyncedMs(coverage.map { it.source to Span(it.startMs, it.endMs) }, Span(from, to)),
                             basal = BasalComparison.analyze(treatments, db.profileDao().all(), from, to, zone, b),
+                            emptyDays = run {
+                                val period = Span(from, to)
+                                fun covered(source: String) = coverage.filter { it.source == source }.map { Span(it.startMs, it.endMs) }
+                                DataChecks.emptyRanges(Sources.GLUCOSE, readings.map { it.timestampMs }, covered(Sources.GLUCOSE), period, zone, 100, to) +
+                                    DataChecks.emptyRanges(Sources.TREATMENTS, treatments.map { it.timestampMs }, covered(Sources.TREATMENTS), period, zone, 5, to) +
+                                    DataChecks.emptyRanges(Sources.IOB, db.iobDao().timestampsSince(from), covered(Sources.IOB), period, zone, 5, to)
+                            },
                         ),
                     )
                 }
