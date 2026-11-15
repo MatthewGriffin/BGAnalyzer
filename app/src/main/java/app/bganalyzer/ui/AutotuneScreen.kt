@@ -49,7 +49,6 @@ fun AutotuneScreen(
     onClear: () -> Unit,
 ) {
     ScreenScaffold(stringResource(R.string.autotune_title)) {
-            Text(stringResource(R.string.autotune_intro), style = MaterialTheme.typography.bodySmall)
             if (sync is SyncState.Running) Text(stringResource(R.string.autotune_syncing), color = MaterialTheme.colorScheme.tertiary)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Dropdown(
