@@ -40,8 +40,17 @@ object Suggestions {
     const val LOW_DAY_SHARE = 0.10
     const val AGREEMENT = 0.6
     private const val CARB_STEP_PCT = 10
+    /** Median drift beyond this many mg/dL per hour counts. */
+    private const val DRIFT_MIN = 8.0
 
-    fun generate(blocks: List<BlockStats>, meals: List<MealBlockStats>, basal: BasalComparisonResult?): SuggestionResult {
+    fun generate(
+        blocks: List<BlockStats>,
+        meals: List<MealBlockStats>,
+        basal: BasalComparisonResult?,
+        drift: List<DriftBlockStats> = emptyList(),
+        /** Profile basal (U/h) per block start hour, so drift suggestions work without loop data. */
+        scheduled: Map<Int, Double> = emptyMap(),
+    ): SuggestionResult {
         val out = ArrayList<Suggestion>()
         val held = ArrayList<Held>()
         fun lowsIn(b: BlockStats?) = b != null && b.days > 0 && (b.veryLowDays > 0 || b.lowDays.toDouble() / b.days >= LOW_DAY_SHARE)
@@ -86,6 +95,33 @@ object Suggestions {
                     )
                 }
             }
+        }
+        // Glucose drifting on its own with no food or manual insulin points at basal, with or without a loop.
+        drift.forEach { d ->
+            if (!d.enoughDays) return@forEach
+            val g = blocks.firstOrNull { it.startHour == d.startHour }
+            val sched = scheduled[d.startHour] ?: return@forEach
+            if (sched <= 0) return@forEach
+            val rising = d.medianSlopeMgdlPerHour >= DRIFT_MIN && d.risingDays.toDouble() / d.days >= AGREEMENT
+            val falling = d.medianSlopeMgdlPerHour <= -DRIFT_MIN && d.fallingDays.toDouble() / d.days >= AGREEMENT
+            if (!rising && !falling) return@forEach
+            val agree = (if (rising) d.risingDays else d.fallingDays).toDouble() / d.days
+            val pct = if (kotlin.math.abs(d.medianSlopeMgdlPerHour) >= 15) MAX_STEP_PCT else MIN_CHANGE_PCT
+            val fact = "With no food or manual insulin, glucose ${if (rising) "rose" else "fell"} on ${if (rising) d.risingDays else d.fallingDays} of ${d.days} quiet days (median ${"%+.0f".format(d.medianSlopeMgdlPerHour)} mg/dL per hour)"
+            val existing = out.indexOfFirst { it.kind == SuggestionKind.BASAL && it.startHour == d.startHour }
+            if (existing >= 0) {
+                val e = out[existing]
+                if (e.moreInsulin == rising) out[existing] = e.copy(evidence = e.evidence + fact, confidence = maxOf(e.confidence, conf(d.days, agree)))
+                else {
+                    out.removeAt(existing)
+                    held += Held(SuggestionKind.BASAL, d.startHour, d.endHour, "loop behaviour and drift without food point in opposite directions")
+                }
+                return@forEach
+            }
+            if (held.any { it.kind == SuggestionKind.BASAL && it.startHour == d.startHour }) return@forEach
+            if (rising && lowsIn(g)) { held += Held(SuggestionKind.BASAL, d.startHour, d.endHour, "glucose drifts up without food but lows also happen in this time of day"); return@forEach }
+            val to = if (rising) minOf(sched * (1 + pct / 100.0), sched + MAX_BASAL_STEP_UPH) else maxOf(sched * (1 - pct / 100.0), sched - MAX_BASAL_STEP_UPH)
+            out += Suggestion(SuggestionKind.BASAL, d.startHour, d.endHour, rising, pct, sched, Math.round(to * 20) / 20.0, conf(d.days, agree), listOf(fact))
         }
         return SuggestionResult(out.sortedWith(compareBy({ it.startHour }, { it.kind })), held)
     }

@@ -50,3 +50,27 @@ class SuggestionsTest {
         assertFalse(r.suggestions.first { it.startHour == 6 }.moreInsulin)
     }
 }
+
+class FastingDriftSuggestionTest {
+    private fun block(start: Int, lowDays: Int = 0) = BlockStats(start, start + 6, 20, 1440, TimeInRange(100, 0, 0, 80, 20, 0, 150.0), lowDays, 0)
+    private fun drift(slope: Double, up: Int, down: Int, days: Int = 10) = listOf(DriftBlockStats(0, 6, days, slope, up, down))
+
+    @Test fun risingWithoutFoodSuggestsMoreBasalWithoutLoopData() {
+        val s = Suggestions.generate(listOf(block(0)), emptyList(), null, drift(12.0, 8, 0), mapOf(0 to 1.0)).suggestions.single()
+        assertTrue(s.moreInsulin); assertEquals(1.1, s.toUph!!, 1e-9)
+    }
+
+    @Test fun fallingWithoutFoodSuggestsLessBasalEvenWithLows() {
+        val s = Suggestions.generate(listOf(block(0, lowDays = 5)), emptyList(), null, drift(-20.0, 0, 9), mapOf(0 to 1.0)).suggestions.single()
+        assertFalse(s.moreInsulin); assertEquals(20, s.changePct)
+    }
+
+    @Test fun risingWithLowsIsHeld() {
+        val r = Suggestions.generate(listOf(block(0, lowDays = 5)), emptyList(), null, drift(12.0, 8, 0), mapOf(0 to 1.0))
+        assertTrue(r.suggestions.isEmpty()); assertEquals(1, r.held.size)
+    }
+
+    @Test fun mixedDaysGiveNothing() {
+        assertTrue(Suggestions.generate(listOf(block(0)), emptyList(), null, drift(9.0, 5, 4), mapOf(0 to 1.0)).suggestions.isEmpty())
+    }
+}

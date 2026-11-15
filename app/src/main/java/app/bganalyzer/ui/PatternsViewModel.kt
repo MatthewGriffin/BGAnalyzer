@@ -10,6 +10,7 @@ import app.bganalyzer.domain.BlockStats
 import app.bganalyzer.domain.EffectiveProfile
 import app.bganalyzer.domain.ProfileResolver
 import app.bganalyzer.domain.ProfileTimeline
+import app.bganalyzer.domain.FastingDrift
 import app.bganalyzer.domain.GlucoseUnit
 import app.bganalyzer.domain.MealBlockStats
 import app.bganalyzer.domain.PostMeal
@@ -78,7 +79,17 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                             mealStats,
                             unsyncedMs = SyncPlanner.unsyncedMs(coverage.map { it.source to Span(it.startMs, it.endMs) }, Span(from, to)),
                             basal = basalStats,
-                            suggestions = Suggestions.generate(blockStats, mealStats, basalStats),
+                            suggestions = Suggestions.generate(
+                                blockStats, mealStats, basalStats,
+                                FastingDrift.analyze(readings, treatments, zone, b),
+                                (0 until 24 step b).associateWith { h ->
+                                    val day = java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(to), zone)
+                                    val rates = (0 until b * 4).mapNotNull { q ->
+                                        resolver.basalAt(day.atStartOfDay(zone).plusHours(h.toLong()).plusMinutes(q * 15L).toInstant().toEpochMilli(), zone)
+                                    }
+                                    if (rates.isEmpty()) 0.0 else rates.average()
+                                },
+                            ),
                             profileChanges = resolver.changes(from, to),
                             emptyDays = run {
                                 val period = Span(from, to)
