@@ -16,6 +16,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.bganalyzer.data.TreatmentEntity
 import app.bganalyzer.domain.GlucoseRanges
 import app.bganalyzer.domain.GlucoseUnit
 import app.bganalyzer.domain.format
@@ -31,6 +32,7 @@ fun GlucoseChart(
     fromMs: Long,
     toMs: Long,
     unit: GlucoseUnit,
+    treatments: List<TreatmentEntity> = emptyList(),
     ranges: GlucoseRanges = GlucoseRanges(),
     modifier: Modifier = Modifier,
 ) {
@@ -70,6 +72,17 @@ fun GlucoseChart(
             val label = if (oneDay) timeFormat.format(Date(t)) else dateFormat.format(Date(t))
             val m = measurer.measure(label, labelStyle)
             drawText(m, topLeft = Offset(left + (w - m.size.width) * anchor, xLabelY))
+        }
+
+        // Carbs (orange) and insulin boluses (blue) as ticks along the bottom edge. Only for short periods,
+        // where they stay readable.
+        if (toMs - fromMs <= 14L * 24 * 60 * 60 * 1000) {
+            for (t in treatments) {
+                if (t.timestampMs !in fromMs..toMs) continue
+                val tx = x(t.timestampMs)
+                if ((t.carbs ?: 0.0) > 0) drawCircle(Color(0xFFE08A1E), 3.dp.toPx(), Offset(tx, top + h - 4.dp.toPx()))
+                if ((t.insulin ?: 0.0) >= 0.5) drawCircle(Color(0xFF3B6FD4), 2.dp.toPx(), Offset(tx, top + h - 11.dp.toPx()))
+            }
         }
 
         val path = Path()

@@ -22,6 +22,9 @@ interface TreatmentDao {
     @Query("SELECT MAX(srvModifiedMs) FROM treatments")
     suspend fun newestServerModified(): Long?
 
+    @Query("SELECT * FROM treatments WHERE valid = 1 AND timestampMs >= :fromMs ORDER BY timestampMs")
+    fun observeValidSince(fromMs: Long): Flow<List<TreatmentEntity>>
+
     @Query("SELECT * FROM treatments WHERE valid = 1 AND timestampMs >= :fromMs AND timestampMs < :toMs ORDER BY timestampMs")
     suspend fun validBetween(fromMs: Long, toMs: Long): List<TreatmentEntity>
 }

@@ -25,6 +25,7 @@ class FakeTreatmentDao(initial: List<app.bganalyzer.data.TreatmentEntity> = empt
     override suspend fun newestTimestamp() = rows.values.maxOfOrNull { it.timestampMs }
     override suspend fun newestServerModified() = rows.values.mapNotNull { it.srvModifiedMs }.maxOrNull()
     override suspend fun validBetween(fromMs: Long, toMs: Long) = all().filter { it.valid && it.timestampMs in fromMs until toMs }
+    override fun observeValidSince(fromMs: Long): Flow<List<app.bganalyzer.data.TreatmentEntity>> = flowOf(rows.values.filter { it.valid && it.timestampMs >= fromMs })
 }
 
 class FakeProfileDao(initial: List<app.bganalyzer.data.ProfileEntity> = emptyList()) : app.bganalyzer.data.ProfileDao {
