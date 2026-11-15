@@ -135,7 +135,10 @@
     <string name="timeline_none">No profile, site, insulin or sensor changes in this period.</string>
     <string name="changes_before">Before</string>
     <string name="changes_after">After</string>
-    <string name="changes_line">%1$s (%2$s days): %3$s%% in range, %4$s%% below, %5$s%% above</string>
+    <string name="changes_line_head">%1$s (%2$s days): </string>
+    <string name="changes_in_range">%1$s%% in range</string>
+    <string name="changes_below">%1$s%% below</string>
+    <string name="changes_above">%1$s%% above</string>
     <string name="autotune_title">Autotune</string>
     <string name="autotune_days_label">Days to replay</string>
     <string name="autotune_run">Run autotune</string>
