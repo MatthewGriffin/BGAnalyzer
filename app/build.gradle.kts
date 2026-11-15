@@ -19,6 +19,8 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -32,6 +34,12 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    packaging {
+        resources {
+            // The MongoDB driver jars each ship this GraalVM file; Android does not use it.
+            excludes += "META-INF/native-image/**"
+        }
     }
 }
 
@@ -48,7 +56,12 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
+    implementation(libs.mongodb.driver.sync)
+
     testImplementation(libs.junit)
+
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
