@@ -17,6 +17,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -123,12 +124,12 @@ private fun GlucoseLines(b: BlockStats, unit: GlucoseUnit) {
     }
     val tir = b.timeInRange
     Text(stringResource(R.string.patterns_days, b.days), style = MaterialTheme.typography.bodySmall)
-    Text(stringResource(R.string.patterns_in_range, pct(tir.inRangePct)))
-    Text(stringResource(R.string.patterns_below, pct(tir.lowPct + tir.veryLowPct)))
-    Text(stringResource(R.string.patterns_above, pct(tir.highPct + tir.veryHighPct)))
+    Text(stringResource(R.string.patterns_in_range, pct(tir.inRangePct)), color = glucoseColor(GlucoseBand.IN_RANGE))
+    Text(stringResource(R.string.patterns_below, pct(tir.lowPct + tir.veryLowPct)), color = glucoseColor(GlucoseBand.LOW))
+    Text(stringResource(R.string.patterns_above, pct(tir.highPct + tir.veryHighPct)), color = glucoseColor(GlucoseBand.HIGH))
     Text(stringResource(R.string.patterns_average, unit.format(tir.meanMgdl), unit.label))
-    if (b.lowDays > 0) Text(stringResource(R.string.patterns_low_days, b.lowDays, b.days), color = MaterialTheme.colorScheme.error)
-    if (b.veryLowDays > 0) Text(stringResource(R.string.patterns_very_low_days, b.veryLowDays, b.days), color = MaterialTheme.colorScheme.error)
+    if (b.lowDays > 0) Text(stringResource(R.string.patterns_low_days, b.lowDays, b.days), color = glucoseColor(GlucoseBand.LOW))
+    if (b.veryLowDays > 0) Text(stringResource(R.string.patterns_very_low_days, b.veryLowDays, b.days), color = glucoseColor(GlucoseBand.VERY_LOW))
 }
 
 @Composable
@@ -154,10 +155,10 @@ private fun MealLines(m: MealBlockStats, unit: GlucoseUnit) {
     // A rise is a difference, so it converts without an offset.
     Text(stringResource(R.string.patterns_meal_rise, unit.format(m.medianRiseMgdl), unit.label))
     m.medianAt2hMgdl?.let { Text(stringResource(R.string.patterns_meal_2h, unit.format(it), unit.label)) }
-    if (m.withReading2h > 0) Text(stringResource(R.string.patterns_meal_high2h, m.highAt2h, m.withReading2h))
+    if (m.withReading2h > 0) Text(stringResource(R.string.patterns_meal_high2h, m.highAt2h, m.withReading2h), color = if (m.highAt2h > 0) glucoseColor(GlucoseBand.HIGH) else MaterialTheme.colorScheme.onSurface)
     Text(
         stringResource(R.string.patterns_meal_low4h, m.lowWithin4h, m.meals),
-        color = if (m.lowWithin4h > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+        color = if (m.lowWithin4h > 0) glucoseColor(GlucoseBand.LOW) else MaterialTheme.colorScheme.onSurface,
     )
 }
 
@@ -263,5 +264,17 @@ private class TimelineEntry(
 @Composable
 private fun PeriodLine(label: String, p: app.bganalyzer.domain.PeriodSummary) {
     val t = p.timeInRange
-    Text(stringResource(R.string.changes_line, label, String.format(Locale.getDefault(), "%.1f", p.days), pct(t.inRangePct), pct(t.lowPct + t.veryLowPct), pct(t.highPct + t.veryHighPct)))
+    val green = glucoseColor(GlucoseBand.IN_RANGE); val red = glucoseColor(GlucoseBand.LOW); val orange = glucoseColor(GlucoseBand.HIGH)
+    val head = stringResource(R.string.changes_line_head, label, String.format(Locale.getDefault(), "%.1f", p.days))
+    val inRange = stringResource(R.string.changes_in_range, pct(t.inRangePct))
+    val below = stringResource(R.string.changes_below, pct(t.lowPct + t.veryLowPct))
+    val above = stringResource(R.string.changes_above, pct(t.highPct + t.veryHighPct))
+    Text(androidx.compose.ui.text.buildAnnotatedString {
+        append(head)
+        withStyle(androidx.compose.ui.text.SpanStyle(color = green)) { append(inRange) }
+        append(", ")
+        withStyle(androidx.compose.ui.text.SpanStyle(color = red)) { append(below) }
+        append(", ")
+        withStyle(androidx.compose.ui.text.SpanStyle(color = orange)) { append(above) }
+    })
 }

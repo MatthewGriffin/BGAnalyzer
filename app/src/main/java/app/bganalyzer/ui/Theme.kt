@@ -31,3 +31,20 @@ fun confidenceColor(confidence: app.bganalyzer.domain.Confidence): androidx.comp
         app.bganalyzer.domain.Confidence.LOW -> if (dark) androidx.compose.ui.graphics.Color(0xFFE57373) else androidx.compose.ui.graphics.Color(0xFFC62828)
     }
 }
+
+/** Where a glucose value sits against the target range. */
+enum class GlucoseBand { IN_RANGE, HIGH, VERY_HIGH, LOW, VERY_LOW }
+
+/** One colour code for glucose everywhere: in range green, high orange, low red (darker for very high and very low). */
+@Composable
+fun glucoseColor(band: GlucoseBand): androidx.compose.ui.graphics.Color {
+    val dark = isSystemInDarkTheme()
+    fun c(light: Long, darkTheme: Long) = androidx.compose.ui.graphics.Color(if (dark) darkTheme else light)
+    return when (band) {
+        GlucoseBand.IN_RANGE -> c(0xFF2E9E5B, 0xFF6FCF97)
+        GlucoseBand.HIGH -> c(0xFFE8780A, 0xFFFFA040)
+        GlucoseBand.VERY_HIGH -> c(0xFFC25A00, 0xFFFF8A3D)
+        GlucoseBand.LOW -> c(0xFFD64545, 0xFFFF7B7B)
+        GlucoseBand.VERY_LOW -> c(0xFF9B1C1C, 0xFFE05252)
+    }
+}

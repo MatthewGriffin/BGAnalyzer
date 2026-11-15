@@ -108,11 +108,11 @@ fun GlucoseScreen(
                 val tir = state.timeInRange
                 val coverage = coveragePercent(tir.count, state.toMs - state.fromMs)
                 Text(stringResource(R.string.tir_title), style = MaterialTheme.typography.titleMedium)
-                TirRow(stringResource(R.string.tir_in_range, unit.format(ranges.lowBelow), unit.format(ranges.highAbove)), tir.inRangePct, Color(0xFF2E9E5B))
-                TirRow(stringResource(R.string.tir_high, unit.format(ranges.highAbove), unit.format(ranges.veryHighAbove)), tir.highPct, Color(0xFFE0A030))
-                TirRow(stringResource(R.string.tir_very_high, unit.format(ranges.veryHighAbove)), tir.veryHighPct, Color(0xFFD9822B))
-                TirRow(stringResource(R.string.tir_low, unit.format(ranges.veryLowBelow), unit.format(ranges.lowBelow)), tir.lowPct, Color(0xFFD64545))
-                TirRow(stringResource(R.string.tir_very_low, unit.format(ranges.veryLowBelow)), tir.veryLowPct, Color(0xFF9B1C1C))
+                TirRow(stringResource(R.string.tir_in_range, unit.format(ranges.lowBelow), unit.format(ranges.highAbove)), tir.inRangePct, glucoseColor(GlucoseBand.IN_RANGE))
+                TirRow(stringResource(R.string.tir_high, unit.format(ranges.highAbove), unit.format(ranges.veryHighAbove)), tir.highPct, glucoseColor(GlucoseBand.HIGH))
+                TirRow(stringResource(R.string.tir_very_high, unit.format(ranges.veryHighAbove)), tir.veryHighPct, glucoseColor(GlucoseBand.VERY_HIGH))
+                TirRow(stringResource(R.string.tir_low, unit.format(ranges.veryLowBelow), unit.format(ranges.lowBelow)), tir.lowPct, glucoseColor(GlucoseBand.LOW))
+                TirRow(stringResource(R.string.tir_very_low, unit.format(ranges.veryLowBelow)), tir.veryLowPct, glucoseColor(GlucoseBand.VERY_LOW))
                 Text(stringResource(R.string.stat_average, unit.format(tir.meanMgdl), unit.label))
                 Text(stringResource(R.string.stat_readings, tir.count, coverage), style = MaterialTheme.typography.bodySmall)
                 if (coverage < 70) {
