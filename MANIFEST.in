@@ -1,3 +1,0 @@
-include IMPLEMENTATION_PLAN.md
-include uv.lock
-recursive-include docs *.md
