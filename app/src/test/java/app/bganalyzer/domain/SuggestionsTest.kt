@@ -74,3 +74,31 @@ class FastingDriftSuggestionTest {
         assertTrue(Suggestions.generate(listOf(block(0)), emptyList(), null, drift(9.0, 5, 4), mapOf(0 to 1.0)).suggestions.isEmpty())
     }
 }
+
+class ProfileSettingsTest {
+    private fun profile(units: String) = app.bganalyzer.data.ProfileEntity(
+        "p", 0, "main", units, "UTC",
+        """{"store":{"main":{"units":"$units","sens":[{"time":"00:00","timeAsSeconds":0,"value":12.0}],"carbratio":[{"time":"00:00","timeAsSeconds":0,"value":5.0}]}}}""",
+    )
+
+    @Test fun mmolSensitivityIsConvertedToMgdl() {
+        val s = ProfileSettings.of(profile("mmol/L"))
+        assertEquals(216.0, s.isfMgdlAt(3)!!, 1e-9); assertEquals(5.0, s.carbRatioAt(3)!!, 1e-9)
+    }
+
+    @Test fun mgdlSensitivityIsKept() = assertEquals(12.0, ProfileSettings.of(profile("mg/dl")).isfMgdlAt(3)!!, 1e-9)
+
+    @Test fun driftStepIsSizedFromSensitivity() {
+        val block = BlockStats(0, 6, 20, 1440, TimeInRange(100, 0, 0, 80, 20, 0, 150.0), 0, 0)
+        val drift = listOf(DriftBlockStats(0, 6, 10, 21.6, 9, 0))
+        val s = Suggestions.generate(listOf(block), emptyList(), null, drift, mapOf(0 to 1.0), ProfileSettings(listOf(BasalStep(0, 216.0)), emptyList())).suggestions.single()
+        assertEquals(10, s.changePct); assertEquals(1.1, s.toUph!!, 1e-9)
+    }
+
+    @Test fun carbRatioSuggestionShowsAbsoluteValues() {
+        val m = MealBlockStats(0, 6, 10, 80.0, 200.0, 8, 10, 0)
+        val block = BlockStats(0, 6, 20, 1440, TimeInRange(100, 0, 0, 80, 20, 0, 150.0), 0, 0)
+        val s = Suggestions.generate(listOf(block), listOf(m), null, emptyList(), emptyMap(), ProfileSettings(emptyList(), listOf(BasalStep(0, 10.0)))).suggestions.single()
+        assertEquals("Profile carb ratio 10.0 -> 9.0 g/U", s.detail)
+    }
+}

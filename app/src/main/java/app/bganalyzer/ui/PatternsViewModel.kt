@@ -9,6 +9,7 @@ import app.bganalyzer.domain.BasalComparisonResult
 import app.bganalyzer.domain.BlockStats
 import app.bganalyzer.domain.EffectiveProfile
 import app.bganalyzer.domain.ProfileResolver
+import app.bganalyzer.domain.ProfileSettings
 import app.bganalyzer.domain.ProfileTimeline
 import app.bganalyzer.domain.FastingDrift
 import app.bganalyzer.domain.GlucoseUnit
@@ -89,6 +90,7 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                                     }
                                     if (rates.isEmpty()) 0.0 else rates.average()
                                 },
+                                ProfileSettings.of(db.profileDao().latest()),
                             ),
                             profileChanges = resolver.changes(from, to),
                             emptyDays = run {

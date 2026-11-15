@@ -20,6 +20,8 @@ data class Suggestion(
     val confidence: Confidence,
     /** Plain-language facts behind the suggestion. */
     val evidence: List<String>,
+    /** Extra line with absolute values, e.g. the carb ratio before and after. */
+    val detail: String? = null,
 )
 
 /** A block where a rule held an increase back, with the reason. Shown so a missing suggestion is explained. */
@@ -50,6 +52,7 @@ object Suggestions {
         drift: List<DriftBlockStats> = emptyList(),
         /** Profile basal (U/h) per block start hour, so drift suggestions work without loop data. */
         scheduled: Map<Int, Double> = emptyMap(),
+        settings: ProfileSettings = ProfileSettings.NONE,
     ): SuggestionResult {
         val out = ArrayList<Suggestion>()
         val held = ArrayList<Held>()
@@ -85,6 +88,7 @@ object Suggestions {
                 lowShare >= 0.3 -> out += Suggestion(
                     SuggestionKind.CARB_RATIO, m.startHour, m.endHour, false, CARB_STEP_PCT, null, null, conf(m.meals, lowShare),
                     listOf("${m.lowWithin4h} of ${m.meals} meals were followed by a low within 4 h", "Suggestion: less insulin per carb (raise the carb ratio number by about $CARB_STEP_PCT%)"),
+                    crDetail(settings, m.startHour, m.endHour, false),
                 )
                 highShare >= AGREEMENT -> {
                     if (lowsIn(g) || lowShare >= LOW_DAY_SHARE) {
@@ -92,6 +96,7 @@ object Suggestions {
                     } else out += Suggestion(
                         SuggestionKind.CARB_RATIO, m.startHour, m.endHour, true, CARB_STEP_PCT, null, null, conf(m.withReading2h, highShare),
                         listOf("${m.highAt2h} of ${m.withReading2h} meals were above the high limit 2 h later", "Suggestion: more insulin per carb (lower the carb ratio number by about $CARB_STEP_PCT%)"),
+                        crDetail(settings, m.startHour, m.endHour, true),
                     )
                 }
             }
@@ -106,7 +111,11 @@ object Suggestions {
             val falling = d.medianSlopeMgdlPerHour <= -DRIFT_MIN && d.fallingDays.toDouble() / d.days >= AGREEMENT
             if (!rising && !falling) return@forEach
             val agree = (if (rising) d.risingDays else d.fallingDays).toDouble() / d.days
-            val pct = if (kotlin.math.abs(d.medianSlopeMgdlPerHour) >= 15) MAX_STEP_PCT else MIN_CHANGE_PCT
+            // With a known sensitivity, size the step from the drift (mg/dL per hour / mg/dL per U = U/h); else use fixed steps.
+            val isf = settings.isfMgdlAt(d.startHour)
+            val pct = if (isf != null && isf > 0) {
+                Math.round(kotlin.math.abs(d.medianSlopeMgdlPerHour) / isf / sched * 100).toInt().coerceIn(5, MAX_STEP_PCT)
+            } else if (kotlin.math.abs(d.medianSlopeMgdlPerHour) >= 15) MAX_STEP_PCT else MIN_CHANGE_PCT
             val fact = "With no food or manual insulin, glucose ${if (rising) "rose" else "fell"} on ${if (rising) d.risingDays else d.fallingDays} of ${d.days} quiet days (median ${"%+.0f".format(d.medianSlopeMgdlPerHour)} mg/dL per hour)"
             val existing = out.indexOfFirst { it.kind == SuggestionKind.BASAL && it.startHour == d.startHour }
             if (existing >= 0) {
@@ -124,6 +133,13 @@ object Suggestions {
             out += Suggestion(SuggestionKind.BASAL, d.startHour, d.endHour, rising, pct, sched, Math.round(to * 20) / 20.0, conf(d.days, agree), listOf(fact))
         }
         return SuggestionResult(out.sortedWith(compareBy({ it.startHour }, { it.kind })), held)
+    }
+
+    private fun crDetail(settings: ProfileSettings, start: Int, end: Int, more: Boolean): String? {
+        val cr = settings.carbRatioAt(start) ?: return null
+        val to = if (more) cr * (1 - CARB_STEP_PCT / 100.0) else cr * (1 + CARB_STEP_PCT / 100.0)
+        val note = if (settings.carbRatio.map { it.rateUph }.distinct().size > 1) " (profile value at $start:00)" else ""
+        return "Profile carb ratio ${"%.1f".format(cr)} -> ${"%.1f".format(to)} g/U$note"
     }
 
     private fun conf(n: Int, agreement: Double) = when {
