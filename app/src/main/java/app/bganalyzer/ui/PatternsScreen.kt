@@ -19,6 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.bganalyzer.R
+import app.bganalyzer.domain.BasalBlockStats
+import app.bganalyzer.domain.BasalComparisonResult
 import app.bganalyzer.domain.BlockStats
 import app.bganalyzer.domain.GlucoseUnit
 import app.bganalyzer.domain.MealBlockStats
@@ -83,6 +85,7 @@ fun PatternsScreen(
             if (state.zoneName.isNotEmpty()) Text(stringResource(R.string.patterns_timezone, state.zoneName), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.patterns_glucose_title), style = MaterialTheme.typography.titleMedium)
             state.blocks.forEach { BlockCard(it, unit) }
+            state.basal?.let { BasalSection(it) }
             Text(stringResource(R.string.patterns_meals_title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(R.string.patterns_meals_intro), style = MaterialTheme.typography.bodySmall)
             state.meals.forEach { MealCard(it, unit) }
@@ -138,4 +141,59 @@ private fun MealCard(m: MealBlockStats, unit: GlucoseUnit) {
             )
         }
     }
+}
+
+private fun rate(v: Double) = String.format(Locale.getDefault(), "%.2f", v)
+private fun signed(v: Double) = String.format(Locale.getDefault(), "%+.0f", v)
+
+/** How often the closed loop ran above or below the profile basal, overall and by time of day. */
+@Composable
+private fun BasalSection(b: BasalComparisonResult) {
+    Text(stringResource(R.string.basal_title), style = MaterialTheme.typography.titleMedium)
+    Text(stringResource(R.string.basal_intro), style = MaterialTheme.typography.bodySmall)
+    if (b.loopCoveragePct < 70) {
+        Text(stringResource(R.string.basal_low_coverage, pct(b.loopCoveragePct)), color = MaterialTheme.colorScheme.error)
+    } else {
+        Text(stringResource(R.string.basal_coverage, pct(b.loopCoveragePct)), style = MaterialTheme.typography.bodySmall)
+    }
+    val o = b.overall
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(R.string.basal_overall), style = MaterialTheme.typography.titleSmall)
+            if (!o.enoughDays) {
+                Text(stringResource(R.string.patterns_not_enough, o.days, TimeBlocks.MIN_DAYS))
+                return@Column
+            }
+            Text(stringResource(R.string.patterns_days, o.days), style = MaterialTheme.typography.bodySmall)
+            BasalLines(o)
+            Text(stringResource(R.string.basal_per_day, rate(o.avgActual * 24), rate(o.avgScheduled * 24)))
+            if (b.tempCount > 0) {
+                Text(
+                    stringResource(R.string.basal_temp_count, b.tempCount, rate(b.tempCount / b.periodDays), b.tempAbove, b.tempBelow, b.tempAt),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+    b.blocks.forEach { blk ->
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(R.string.patterns_block_time, hour(blk.startHour), hour(blk.endHour)), style = MaterialTheme.typography.titleSmall)
+                if (!blk.enoughDays) {
+                    Text(stringResource(R.string.patterns_not_enough, blk.days, TimeBlocks.MIN_DAYS))
+                } else {
+                    Text(stringResource(R.string.patterns_days, blk.days), style = MaterialTheme.typography.bodySmall)
+                    BasalLines(blk)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BasalLines(s: BasalBlockStats) {
+    Text(stringResource(R.string.basal_above, pct(s.abovePct)))
+    Text(stringResource(R.string.basal_below, pct(s.belowPct)) + if (s.zeroPct >= 0.5) " " + stringResource(R.string.basal_zero, pct(s.zeroPct)) else "")
+    Text(stringResource(R.string.basal_at, pct(s.atPct)))
+    Text(stringResource(R.string.basal_average, rate(s.avgActual), rate(s.avgScheduled), signed(s.changePct)))
 }

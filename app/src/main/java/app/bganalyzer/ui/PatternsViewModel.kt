@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.bganalyzer.data.AppDatabase
+import app.bganalyzer.domain.BasalComparison
+import app.bganalyzer.domain.BasalComparisonResult
 import app.bganalyzer.domain.BlockStats
 import app.bganalyzer.domain.GlucoseUnit
 import app.bganalyzer.domain.MealBlockStats
@@ -32,6 +34,8 @@ data class PatternsState(
     val unit: GlucoseUnit = GlucoseUnit.MMOL,
     /** How much of the period has never been requested from Nightscout; see [SyncPlanner.unsyncedMs]. */
     val unsyncedMs: Long = 0,
+    /** How the loop's temp basals compared with the profile's scheduled basal; null until loaded. */
+    val basal: BasalComparisonResult? = null,
 )
 
 class PatternsViewModel(app: Application) : AndroidViewModel(app) {
@@ -49,13 +53,14 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                     val zone = db.profileDao().latest()?.timezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
                         ?: ZoneId.systemDefault()
                     val readings = db.glucoseReadingDao().between(from, to)
-                    val treatments = db.treatmentDao().validBetween(from - 4 * 3_600_000L, to)
+                    val treatments = db.treatmentDao().validBetween(from - 12 * 3_600_000L, to)
                     emit(
                         PatternsState(
                             d, b, true, readings.size, zone.id,
                             TimeBlocks.analyze(readings, zone, b),
                             PostMeal.analyze(readings, PostMeal.meals(treatments).filter { it.timeMs >= from }, zone, b),
                             unsyncedMs = SyncPlanner.unsyncedMs(coverage.map { it.source to Span(it.startMs, it.endMs) }, Span(from, to)),
+                            basal = BasalComparison.analyze(treatments, db.profileDao().all(), from, to, zone, b),
                         ),
                     )
                 }
