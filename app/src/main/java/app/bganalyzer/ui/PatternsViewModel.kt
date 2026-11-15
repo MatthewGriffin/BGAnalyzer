@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.bganalyzer.data.AppDatabase
 import app.bganalyzer.data.ExcludedDayEntity
+import app.bganalyzer.domain.ChangeComparison
+import app.bganalyzer.domain.ChangeResult
 import app.bganalyzer.domain.ExcludedDays
 import app.bganalyzer.domain.BasalComparison
 import app.bganalyzer.domain.BasalComparisonResult
@@ -54,6 +56,8 @@ data class PatternsState(
     val profileChanges: List<EffectiveProfile> = emptyList(),
     /** Days the user marked as bad data, newest first. They are left out of everything on this tab. */
     val excludedDays: List<ExcludedDayEntity> = emptyList(),
+    /** Glucose before and after each profile change in the period, newest first. */
+    val changes: List<ChangeResult> = emptyList(),
     val suggestions: SuggestionResult = SuggestionResult(emptyList(), emptyList()),
 )
 
@@ -89,6 +93,10 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                             unsyncedMs = SyncPlanner.unsyncedMs(coverage.map { it.source to Span(it.startMs, it.endMs) }, Span(from, to)),
                             basal = basalStats,
                             excludedDays = excluded,
+                            changes = ChangeComparison.compare(
+                                ExcludedDays.readings(db.glucoseReadingDao().between(from - ChangeComparison.WINDOW_DAYS * DAY_MS, to), zone, excludedDates),
+                                resolver.changes(0L, to), from, to,
+                            ).reversed(),
                             suggestions = Suggestions.generate(
                                 blockStats, mealStats, basalStats,
                                 FastingDrift.analyze(readings, treatments, zone, b),

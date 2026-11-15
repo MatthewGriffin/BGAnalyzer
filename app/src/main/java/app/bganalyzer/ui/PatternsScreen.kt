@@ -92,6 +92,7 @@ fun PatternsScreen(
             if (state.zoneName.isNotEmpty()) Text(stringResource(R.string.patterns_timezone, state.zoneName), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.patterns_glucose_title), style = MaterialTheme.typography.titleMedium)
             state.blocks.forEach { BlockCard(it, unit) }
+            ChangesSection(state.changes)
             state.basal?.let { BasalSection(it, state.profileChanges) }
             Text(stringResource(R.string.patterns_meals_title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(R.string.patterns_meals_intro), style = MaterialTheme.typography.bodySmall)
@@ -294,4 +295,33 @@ private fun ExcludedDaysSection(state: PatternsState, onExclude: (String, String
             }
         }
     }
+}
+
+/** What glucose did in the days before and after each profile change. Shows what happened, not why. */
+@Composable
+private fun ChangesSection(changes: List<app.bganalyzer.domain.ChangeResult>) {
+    if (changes.isEmpty()) return
+    val fmt = androidx.compose.runtime.remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT) }
+    Text(stringResource(R.string.changes_title), style = MaterialTheme.typography.titleMedium)
+    Text(stringResource(R.string.changes_intro), style = MaterialTheme.typography.bodySmall)
+    changes.take(10).forEach { c ->
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("${fmt.format(java.util.Date(c.change.startMs))}  ${c.change.label()}", style = MaterialTheme.typography.titleSmall)
+                c.basalPerDayBefore?.let { Text(stringResource(R.string.changes_basal, rate(it), rate(c.basalPerDayAfter)), style = MaterialTheme.typography.bodySmall) }
+                if (!c.before.enough || !c.after.enough) {
+                    Text(stringResource(R.string.changes_not_enough, pct(c.before.days), pct(c.after.days)))
+                } else {
+                    PeriodLine(stringResource(R.string.changes_before), c.before)
+                    PeriodLine(stringResource(R.string.changes_after), c.after)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeriodLine(label: String, p: app.bganalyzer.domain.PeriodSummary) {
+    val t = p.timeInRange
+    Text(stringResource(R.string.changes_line, label, String.format(Locale.getDefault(), "%.1f", p.days), pct(t.inRangePct), pct(t.lowPct + t.veryLowPct), pct(t.highPct + t.veryHighPct)))
 }

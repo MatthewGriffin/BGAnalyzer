@@ -143,4 +143,11 @@
     <string name="excluded_button">Exclude this day</string>
     <string name="excluded_restore">Restore</string>
     <string name="suggestions_syncing">Syncing this period first. The suggestions below update when it finishes.</string>
+    <string name="changes_title">Before and after profile changes</string>
+    <string name="changes_intro">Up to 7 days either side of each profile change, stopping at the neighbouring change. This shows what happened, not why: meals, illness and activity differ between weeks.</string>
+    <string name="changes_basal">Total basal per day: %1$s U before, %2$s U after</string>
+    <string name="changes_not_enough">Not enough glucose data to compare (%1$s days before, %2$s days after; needs at least 2 days of readings each side).</string>
+    <string name="changes_before">Before</string>
+    <string name="changes_after">After</string>
+    <string name="changes_line">%1$s (%2$s days): %3$s%% in range, %4$s%% below, %5$s%% above</string>
 </resources>
