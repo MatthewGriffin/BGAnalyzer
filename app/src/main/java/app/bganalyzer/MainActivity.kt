@@ -32,7 +32,11 @@ import androidx.compose.runtime.setValue
 import app.bganalyzer.data.AppDatabase
 import app.bganalyzer.mongo.ConnectionErrors
 import app.bganalyzer.mongo.NightscoutMongo
+import app.bganalyzer.rest.RestAuth
+import app.bganalyzer.rest.RestSyncSource
 import app.bganalyzer.settings.ConnectionStore
+import app.bganalyzer.settings.RestStore
+import app.bganalyzer.ui.RestUi
 import app.bganalyzer.ui.BGAnalyzerTheme
 import app.bganalyzer.ui.ConnectionScreen
 import app.bganalyzer.ui.TestState
@@ -51,6 +55,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val readingCount = AppDatabase.get(this).glucoseReadingDao().observeCount()
         val store = ConnectionStore(this)
+        val restStore = RestStore(this)
         setContent {
             BGAnalyzerTheme {
                 val count by readingCount.collectAsState(initial = 0)
@@ -61,6 +66,10 @@ class MainActivity : ComponentActivity() {
                 var database by remember(restores) { mutableStateOf(store.database) }
                 var followAddress by remember(restores) { mutableStateOf(store.database.isBlank()) }
                 var testState by remember { mutableStateOf<TestState>(TestState.Idle) }
+                var restSource by remember(restores) { mutableStateOf(restStore.source) }
+                var restUrl by remember(restores) { mutableStateOf(restStore.url) }
+                var restAuth by remember(restores) { mutableStateOf(restStore.authType) }
+                var restSecret by remember(restores) { mutableStateOf(restStore.secret) }
                 val scope = rememberCoroutineScope()
                 var tab by rememberSaveable { mutableStateOf(0) }
                 val glucoseState by glucose.state.collectAsState()
@@ -124,6 +133,37 @@ class MainActivity : ComponentActivity() {
                         followAddress = false
                         database = it
                     },
+                    rest = RestUi(
+                        source = restSource, url = restUrl, auth = restAuth, secret = restSecret,
+                        // Choosing a source only switches which one a sync reads; nothing saved is changed or removed.
+                        onSource = { restSource = it; restStore.source = it; testState = TestState.Idle },
+                        onUrl = { restUrl = it },
+                        onAuth = { restAuth = it },
+                        onSecret = { restSecret = it },
+                        onTest = {
+                            testState = TestState.Running
+                            scope.launch {
+                                testState = withContext(Dispatchers.IO) {
+                                    try {
+                                        val auth = when (restAuth) {
+                                            RestStore.AUTH_TOKEN -> RestAuth.Token(restSecret.trim())
+                                            RestStore.AUTH_SECRET -> RestAuth.ApiSecret(restSecret.trim())
+                                            else -> RestAuth.None
+                                        }
+                                        val report = RestSyncSource(restUrl, auth).test()
+                                        // Only settings that worked are kept.
+                                        restStore.url = RestSyncSource.normalizeUrl(restUrl)
+                                        restStore.authType = restAuth
+                                        restStore.secret = if (restAuth == RestStore.AUTH_NONE) "" else restSecret.trim()
+                                        restUrl = restStore.url
+                                        TestState.Ok(report)
+                                    } catch (e: Exception) {
+                                        TestState.Failed(ConnectionErrors.describe(e))
+                                    }
+                                }
+                            }
+                        },
+                    ),
                     onTest = {
                         testState = TestState.Running
                         scope.launch {

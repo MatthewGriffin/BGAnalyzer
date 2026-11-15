@@ -165,4 +165,16 @@
     <string name="autotune_basal_note">Low confidence means few days, or hours with little usable data that were filled in from their neighbours.</string>
     <string name="autotune_held">Held at the current rate. Autotune wanted %1$s U/h, but %2$s.</string>
     <string name="autotune_clear">Clear result</string>
+    <string name="source_label">Data source</string>
+    <string name="source_mongo">MongoDB (default)</string>
+    <string name="source_rest">Nightscout REST API</string>
+    <string name="rest_intro">Reads from your Nightscout site over the internet, a little at a time. No database address is needed. Your saved MongoDB connection is kept untouched and can be switched back to at any time.</string>
+    <string name="rest_url_label">Nightscout address</string>
+    <string name="rest_url_placeholder">https://your-site.example</string>
+    <string name="rest_auth_label">Access</string>
+    <string name="rest_auth_none">Public (no token needed)</string>
+    <string name="rest_auth_token">Access token</string>
+    <string name="rest_auth_secret">API secret</string>
+    <string name="rest_token_label">Access token</string>
+    <string name="rest_secret_label">API secret</string>
 </resources>

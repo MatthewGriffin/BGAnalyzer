@@ -22,7 +22,10 @@ import app.bganalyzer.domain.PostMeal
 import app.bganalyzer.domain.GlucoseUnit
 import app.bganalyzer.domain.TimeInRange
 import app.bganalyzer.mongo.ConnectionErrors
+import app.bganalyzer.rest.RestAuth
+import app.bganalyzer.rest.RestSyncSource
 import app.bganalyzer.settings.ConnectionStore
+import app.bganalyzer.settings.RestStore
 import app.bganalyzer.sync.NightscoutSync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -78,6 +81,7 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
     private val db = AppDatabase.get(app)
     private val dao = db.glucoseReadingDao()
     private val store = ConnectionStore(app)
+    private val rest = RestStore(app)
     private val days = MutableStateFlow(7)
     private val unit = MutableStateFlow(GlucoseUnit.MMOL)
     private val viewPrefs = app.getSharedPreferences("view_settings", android.content.Context.MODE_PRIVATE)
@@ -128,7 +132,8 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GlucoseUiState())
 
-    val hasConnection: Boolean get() = store.uri.isNotBlank() && store.database.isNotBlank()
+    val hasConnection: Boolean get() =
+        if (rest.source == RestStore.SOURCE_REST) rest.url.isNotBlank() else store.uri.isNotBlank() && store.database.isNotBlank()
 
     fun setDays(value: Int) = days.update { value }
 
@@ -145,16 +150,25 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
     /** Makes the last [days] days complete: only missing or recent stretches are requested. The Overview passes its own period, the Patterns tab its own. */
     fun sync(days: Int) {
         if (_sync.value is SyncState.Running) return
+        val useRest = rest.source == RestStore.SOURCE_REST
         val uri = store.uri
         val database = store.database
-        if (uri.isBlank() || database.isBlank()) {
+        if (!hasConnection) {
             _sync.value = SyncState.Failed(getApplication<Application>().getString(R.string.sync_no_connection))
             return
         }
         _sync.value = SyncState.Running(0)
         viewModelScope.launch(Dispatchers.IO) {
             _sync.value = try {
-                val result = NightscoutSync(db).run(uri, database, days) { _sync.value = SyncState.Running(it) }
+                val progress = { n: Int -> _sync.value = SyncState.Running(n) }
+                val result = if (useRest) {
+                    val auth = when (rest.authType) {
+                        RestStore.AUTH_TOKEN -> RestAuth.Token(rest.secret)
+                        RestStore.AUTH_SECRET -> RestAuth.ApiSecret(rest.secret)
+                        else -> RestAuth.None
+                    }
+                    RestSyncSource(rest.url, auth).use { NightscoutSync(db).run(it, days, progress) }
+                } else NightscoutSync(db).run(uri, database, days, progress)
                 // The window moves with the clock, so refresh it after new data arrives.
                 refresh.update { it + 1 }
                 SyncState.Done(result.glucoseFetched, result.treatmentsFetched, result.profilesFetched, result.iobFetched, result.spans)
