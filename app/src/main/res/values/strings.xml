@@ -83,7 +83,7 @@
     <string name="patterns_meal_high2h">Above range 2 hours after: %1$d of %2$d meals</string>
     <string name="patterns_meal_low4h">Low within 4 hours after: %1$d of %2$d meals</string>
     <string name="patterns_no_data">No readings in this period. Sync to load them.</string>
-    <string name="chart_touch_hint">Touch and slide a finger across the chart to see what was happening at that moment.</string>
+    <string name="chart_touch_hint">This is right now. Touch and slide a finger across the chart to see any earlier moment.</string>
     <string name="chart_legend">Top: glucose, with orange dots for carbs (up to 14 days). Bottom: basal in teal (lighter where it is the profile schedule, which ignores profile percentage and time shift) and insulin boluses as blue bars (lighter for automatic micro-boluses), each with its own scale.</string>
     <string name="moment_glucose">Glucose %1$s %2$s</string>
     <string name="moment_no_reading">No glucose reading near this time</string>
@@ -94,4 +94,7 @@
     <string name="moment_last_carbs">Last carbs: %1$s g, %2$s earlier</string>
     <string name="moment_last_bolus">Last bolus: %1$s U, %2$s earlier</string>
     <string name="moment_last_smb">Last automatic bolus: %1$s U, %2$s earlier</string>
+    <string name="moment_now">Now, %1$s</string>
+    <string name="moment_latest_reading">Latest reading %1$s %2$s, %3$s ago</string>
+    <string name="moment_back_to_now">Back to now</string>
 </resources>
