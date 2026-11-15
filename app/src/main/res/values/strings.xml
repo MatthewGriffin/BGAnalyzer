@@ -5,8 +5,6 @@
     <string name="connection_uri_label">MongoDB address</string>
     <string name="connection_uri_placeholder">mongodb+srv://user:password@cluster.mongodb.net</string>
     <string name="connection_database_label">Database name</string>
-    <string name="connection_show_address">Show address</string>
-    <string name="connection_hide_address">Hide address</string>
     <string name="connection_test_button">Test connection</string>
     <string name="connection_testing">Connecting…</string>
     <string name="connection_ok_title">Connected to %1$s</string>
