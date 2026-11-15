@@ -4,6 +4,19 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import app.bganalyzer.ui.GlucoseScreen
+import app.bganalyzer.ui.GlucoseViewModel
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,6 +35,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
+    private val glucose: GlucoseViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -35,6 +50,36 @@ class MainActivity : ComponentActivity() {
                 var followAddress by remember { mutableStateOf(store.database.isBlank()) }
                 var testState by remember { mutableStateOf<TestState>(TestState.Idle) }
                 val scope = rememberCoroutineScope()
+                var tab by rememberSaveable { mutableStateOf(0) }
+                val glucoseState by glucose.state.collectAsState()
+                val syncState by glucose.sync.collectAsState()
+                Scaffold(
+                    bottomBar = {
+                        NavigationBar {
+                            listOf(R.string.tab_glucose, R.string.tab_connection).forEachIndexed { i, label ->
+                                NavigationBarItem(
+                                    selected = tab == i,
+                                    onClick = { tab = i; if (i == 0) glucose.refreshWindow() },
+                                    icon = {},
+                                    label = { Text(stringResource(label)) },
+                                    alwaysShowLabel = true,
+                                )
+                            }
+                        }
+                    },
+                ) { inner ->
+                if (tab == 0) {
+                    Box(Modifier.padding(inner)) {
+                        GlucoseScreen(
+                            state = glucoseState,
+                            sync = syncState,
+                            hasConnection = glucose.hasConnection,
+                            onDaysChange = glucose::setDays,
+                            onUnitChange = glucose::setUnit,
+                            onSync = glucose::sync,
+                        )
+                    }
+                } else Box(Modifier.padding(inner)) {
                 ConnectionScreen(
                     uri = uri,
                     database = database,
@@ -66,6 +111,8 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                 )
+                }
+                }
             }
         }
     }
