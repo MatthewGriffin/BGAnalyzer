@@ -64,7 +64,7 @@ fun GlucoseScreen(
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Text(stringResource(R.string.sync_running, sync.stored))
                 }
-                is SyncState.Done -> Text(stringResource(R.string.sync_done, sync.fetched))
+                is SyncState.Done -> Text(stringResource(R.string.sync_done, sync.glucose, sync.treatments, sync.profiles))
                 is SyncState.Failed -> {
                     Text(stringResource(R.string.sync_failed), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall)
                     Text(sync.message)

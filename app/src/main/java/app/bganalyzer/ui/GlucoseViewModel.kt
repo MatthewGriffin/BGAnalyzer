@@ -9,7 +9,7 @@ import app.bganalyzer.domain.GlucoseUnit
 import app.bganalyzer.domain.TimeInRange
 import app.bganalyzer.mongo.ConnectionErrors
 import app.bganalyzer.settings.ConnectionStore
-import app.bganalyzer.sync.GlucoseSync
+import app.bganalyzer.sync.NightscoutSync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
 sealed interface SyncState {
     data object Idle : SyncState
     data class Running(val stored: Int) : SyncState
-    data class Done(val fetched: Int) : SyncState
+    data class Done(val glucose: Int, val treatments: Int, val profiles: Int) : SyncState
     data class Failed(val message: String) : SyncState
 }
 
@@ -44,7 +44,8 @@ data class GlucoseUiState(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
-    private val dao = AppDatabase.get(app).glucoseReadingDao()
+    private val db = AppDatabase.get(app)
+    private val dao = db.glucoseReadingDao()
     private val store = ConnectionStore(app)
     private val days = MutableStateFlow(7)
     private val unit = MutableStateFlow(GlucoseUnit.MMOL)
@@ -85,10 +86,10 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
         _sync.value = SyncState.Running(0)
         viewModelScope.launch(Dispatchers.IO) {
             _sync.value = try {
-                val result = GlucoseSync(dao).run(uri, database) { _sync.value = SyncState.Running(it) }
+                val result = NightscoutSync(db).run(uri, database) { _sync.value = SyncState.Running(it) }
                 // The window moves with the clock, so refresh it after new data arrives.
                 refresh.update { it + 1 }
-                SyncState.Done(result.fetched)
+                SyncState.Done(result.glucoseFetched, result.treatmentsFetched, result.profilesFetched)
             } catch (e: Exception) {
                 SyncState.Failed(ConnectionErrors.describe(e))
             }

@@ -23,7 +23,7 @@ sealed interface BackupState {
 }
 
 class BackupViewModel(private val app: Application) : AndroidViewModel(app) {
-    private val backup = AppBackup(AppDatabase.get(app).glucoseReadingDao(), ConnectionStore(app))
+    private val backup = AppBackup(AppDatabase.get(app).let { it.glucoseReadingDao() }, AppDatabase.get(app).treatmentDao(), AppDatabase.get(app).profileDao(), ConnectionStore(app))
     private val _state = MutableStateFlow<BackupState>(BackupState.Idle)
     val state: StateFlow<BackupState> = _state
 

@@ -1,6 +1,8 @@
 package app.bganalyzer.backup
 
 import app.bganalyzer.data.GlucoseReadingEntity
+import app.bganalyzer.data.ProfileEntity
+import app.bganalyzer.data.TreatmentEntity
 import app.bganalyzer.sync.GlucoseEntryMapper
 import org.bson.Document
 import java.io.ByteArrayInputStream
@@ -23,6 +25,9 @@ data class BackupData(
     val connectionUri: String?,
     val connectionDatabase: String?,
     val glucose: List<GlucoseReadingEntity>,
+    /** Added after version 1 files existed; an older file simply has none. */
+    val treatments: List<TreatmentEntity> = emptyList(),
+    val profiles: List<ProfileEntity> = emptyList(),
 )
 
 class BackupException(val reason: Reason, message: String) : Exception(message) {
@@ -55,6 +60,8 @@ object BackupCodec {
                 Document("uri", data.connectionUri).append("database", data.connectionDatabase),
             )
             .append("glucose", data.glucose.map { listOf(it.timestampMs, it.mgdl) })
+            .append("treatments", data.treatments.map(::treatmentDoc))
+            .append("profiles", data.profiles.map(::profileDoc))
         val salt = ByteArray(16).also(SecureRandom()::nextBytes)
         val iv = ByteArray(12).also(SecureRandom()::nextBytes)
         val sealed = cipher(Cipher.ENCRYPT_MODE, key(passphrase, salt, ITERATIONS), iv)
@@ -117,10 +124,48 @@ object BackupCodec {
             else GlucoseReadingEntity(t, v)
         }
         return BackupData(
+            treatments = (payload["treatments"] as? List<*>).orEmpty().mapNotNull { (it as? Document)?.let(::treatmentFrom) },
+            profiles = (payload["profiles"] as? List<*>).orEmpty().mapNotNull { (it as? Document)?.let(::profileFrom) },
             createdMs = (payload["createdMs"] as? Number)?.toLong() ?: 0L,
             connectionUri = (connection?.get("uri") as? String)?.takeIf { it.isNotBlank() },
             connectionDatabase = (connection?.get("database") as? String)?.takeIf { it.isNotBlank() },
             glucose = readings,
+        )
+    }
+
+    private fun treatmentDoc(t: TreatmentEntity) = Document("id", t.id).append("t", t.timestampMs)
+        .append("type", t.eventType).append("insulin", t.insulin).append("carbs", t.carbs).append("smb", t.isSmb)
+        .append("rate", t.rateUph).append("dur", t.durationMs).append("pct", t.percentage)
+        .append("valid", t.valid).append("srv", t.srvModifiedMs).append("raw", t.rawJson)
+
+    private fun treatmentFrom(d: Document): TreatmentEntity? {
+        return TreatmentEntity(
+        id = d.getString("id") ?: return null,
+        timestampMs = (d["t"] as? Number)?.toLong() ?: return null,
+        eventType = d["type"] as? String,
+        insulin = (d["insulin"] as? Number)?.toDouble(),
+        carbs = (d["carbs"] as? Number)?.toDouble(),
+        isSmb = d["smb"] == true,
+        rateUph = (d["rate"] as? Number)?.toDouble(),
+        durationMs = (d["dur"] as? Number)?.toLong(),
+        percentage = (d["pct"] as? Number)?.toDouble(),
+        valid = d["valid"] != false,
+        srvModifiedMs = (d["srv"] as? Number)?.toLong(),
+        rawJson = d["raw"] as? String ?: "{}",
+        )
+    }
+
+    private fun profileDoc(p: ProfileEntity) = Document("id", p.id).append("start", p.startMs)
+        .append("default", p.defaultProfile).append("units", p.units).append("tz", p.timezone).append("raw", p.rawJson)
+
+    private fun profileFrom(d: Document): ProfileEntity? {
+        return ProfileEntity(
+        id = d.getString("id") ?: return null,
+        startMs = (d["start"] as? Number)?.toLong() ?: return null,
+        defaultProfile = d["default"] as? String,
+        units = d["units"] as? String,
+        timezone = d["tz"] as? String,
+        rawJson = d["raw"] as? String ?: "{}",
         )
     }
 
