@@ -87,9 +87,7 @@ fun PatternsScreen(
                 TimeBlockCard(g, state.basal?.blocks?.firstOrNull { it.startHour == g.startHour }, state.meals.firstOrNull { it.startHour == g.startHour }, unit)
             }
             Text(stringResource(R.string.patterns_meals_intro), style = MaterialTheme.typography.bodySmall)
-            ProfileChangesCard(state.profileChanges)
-            ChangesSection(state.changes)
-            EquipmentSection(state.equipment)
+            ChangesTimeline(state)
             // data quality last: the trends above are what this tab is for
             EmptyDaysNotice(state.emptyDays)
         }
@@ -209,79 +207,61 @@ private fun BasalLines(s: BasalBlockStats) {
     Text(stringResource(R.string.basal_average, rate(s.avgActual), rate(s.avgScheduled), signed(s.changePct)))
 }
 
-/** Which profile was switched to and when, with any percentage or time shift, so the comparison above can be read against it. */
+/**
+ * Everything that changed in the period, newest first, in one list: profile switches, and site, insulin and sensor
+ * changes, each with glucose before and after it. Shows what happened, not why.
+ */
 @Composable
-private fun ProfileChangesCard(changes: List<app.bganalyzer.domain.EffectiveProfile>) {
+private fun ChangesTimeline(state: PatternsState) {
     val fmt = androidx.compose.runtime.remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT) }
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(R.string.profile_changes_title), style = MaterialTheme.typography.titleSmall)
-            if (changes.isEmpty()) {
-                Text(stringResource(R.string.profile_changes_none), style = MaterialTheme.typography.bodySmall)
-            } else {
-                changes.takeLast(15).reversed().forEach {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(fmt.format(java.util.Date(it.startMs)), style = MaterialTheme.typography.bodyMedium)
-                        Text(it.label(), style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-                if (changes.size > 15) Text(stringResource(R.string.profile_changes_more, changes.size - 15), style = MaterialTheme.typography.bodySmall)
-            }
-        }
+    val entries = buildList {
+        state.changes.forEach { add(TimelineEntry(it.change.startMs, "Profile: " + it.change.label(), it.basalPerDayBefore, it.basalPerDayAfter, it.before, it.after)) }
+        state.equipment.forEach { add(TimelineEntry(it.change.startMs, it.change.label, null, null, it.before, it.after)) }
+        // temporary profile switches are not compared (they end on their own), but they belong on the timeline
+        state.profileChanges.filter { it.isTemporary }.forEach { add(TimelineEntry(it.startMs, "Profile: " + it.label(), null, null, null, null)) }
     }
-}
-
-
-/** What glucose did in the days before and after each profile change. Shows what happened, not why. */
-@Composable
-private fun ChangesSection(changes: List<app.bganalyzer.domain.ChangeResult>) {
-    if (changes.isEmpty()) return
-    val fmt = androidx.compose.runtime.remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT) }
-    Text(stringResource(R.string.changes_title), style = MaterialTheme.typography.titleMedium)
-    Text(stringResource(R.string.changes_intro), style = MaterialTheme.typography.bodySmall)
-    changes.take(10).forEach { c ->
+        // Several switches minutes apart (editing a profile) leave windows with no data and no basal change: nothing to show
+        .filterNot { e ->
+            val b = e.before; val a = e.after
+            e.basalBefore != null && e.basalAfter != null && kotlin.math.abs(e.basalBefore - e.basalAfter) < 0.005 &&
+                b != null && a != null && !(b.enough && a.enough)
+        }
+        .sortedByDescending { it.timeMs }
+    Text(stringResource(R.string.timeline_title), style = MaterialTheme.typography.titleMedium)
+    if (entries.isEmpty()) {
+        Text(stringResource(R.string.timeline_none), style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    Text(stringResource(R.string.timeline_intro), style = MaterialTheme.typography.bodySmall)
+    entries.take(15).forEach { e ->
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("${fmt.format(java.util.Date(c.change.startMs))}  ${c.change.label()}", style = MaterialTheme.typography.titleSmall)
-                c.basalPerDayBefore?.let { Text(stringResource(R.string.changes_basal, rate(it), rate(c.basalPerDayAfter)), style = MaterialTheme.typography.bodySmall) }
-                if (!c.before.enough || !c.after.enough) {
-                    Text(stringResource(R.string.changes_not_enough, pct(c.before.days), pct(c.after.days)))
-                } else {
-                    PeriodLine(stringResource(R.string.changes_before), c.before)
-                    PeriodLine(stringResource(R.string.changes_after), c.after)
+                Text(fmt.format(java.util.Date(e.timeMs)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                Text(e.label, style = MaterialTheme.typography.titleSmall)
+                e.basalBefore?.let { Text(stringResource(R.string.changes_basal, rate(it), rate(e.basalAfter ?: it)), style = MaterialTheme.typography.bodySmall) }
+                val before = e.before; val after = e.after
+                if (before != null && after != null) {
+                    if (!before.enough || !after.enough) {
+                        Text(stringResource(R.string.changes_not_enough, pct(before.days), pct(after.days)))
+                    } else {
+                        PeriodLine(stringResource(R.string.changes_before), before)
+                        PeriodLine(stringResource(R.string.changes_after), after)
+                    }
                 }
             }
         }
     }
+    if (entries.size > 15) Text(stringResource(R.string.profile_changes_more, entries.size - 15), style = MaterialTheme.typography.bodySmall)
 }
+
+private class TimelineEntry(
+    val timeMs: Long, val label: String,
+    val basalBefore: Double?, val basalAfter: Double?,
+    val before: app.bganalyzer.domain.PeriodSummary?, val after: app.bganalyzer.domain.PeriodSummary?,
+)
 
 @Composable
 private fun PeriodLine(label: String, p: app.bganalyzer.domain.PeriodSummary) {
     val t = p.timeInRange
     Text(stringResource(R.string.changes_line, label, String.format(Locale.getDefault(), "%.1f", p.days), pct(t.inRangePct), pct(t.lowPct + t.veryLowPct), pct(t.highPct + t.veryHighPct)))
-}
-
-/** What glucose did in the days before and after each site, insulin or sensor change. Shows what happened, not why. */
-@Composable
-private fun EquipmentSection(results: List<app.bganalyzer.domain.EquipmentResult>) {
-    val fmt = androidx.compose.runtime.remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT) }
-    Text(stringResource(R.string.equipment_title), style = MaterialTheme.typography.titleMedium)
-    if (results.isEmpty()) {
-        Text(stringResource(R.string.equipment_none), style = MaterialTheme.typography.bodySmall)
-        return
-    }
-    Text(stringResource(R.string.equipment_intro), style = MaterialTheme.typography.bodySmall)
-    results.take(10).forEach { r ->
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("${fmt.format(java.util.Date(r.change.startMs))}  ${r.change.label}", style = MaterialTheme.typography.titleSmall)
-                if (!r.before.enough || !r.after.enough) {
-                    Text(stringResource(R.string.changes_not_enough, pct(r.before.days), pct(r.after.days)))
-                } else {
-                    PeriodLine(stringResource(R.string.changes_before), r.before)
-                    PeriodLine(stringResource(R.string.changes_after), r.after)
-                }
-            }
-        }
-    }
 }
