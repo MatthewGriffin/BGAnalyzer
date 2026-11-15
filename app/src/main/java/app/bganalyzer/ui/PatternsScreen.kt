@@ -81,14 +81,15 @@ fun PatternsScreen(
                 return@ScreenScaffold
             }
             if (state.zoneName.isNotEmpty()) Text(stringResource(R.string.patterns_timezone, state.zoneName), style = MaterialTheme.typography.bodySmall)
-            Text(stringResource(R.string.patterns_glucose_title), style = MaterialTheme.typography.titleMedium)
-            state.blocks.forEach { BlockCard(it, unit) }
+            state.basal?.let { BasalHeader(it) }
+            state.basal?.let { OverallBasalCard(it) }
+            state.blocks.forEach { g ->
+                TimeBlockCard(g, state.basal?.blocks?.firstOrNull { it.startHour == g.startHour }, state.meals.firstOrNull { it.startHour == g.startHour }, unit)
+            }
+            Text(stringResource(R.string.patterns_meals_intro), style = MaterialTheme.typography.bodySmall)
+            ProfileChangesCard(state.profileChanges)
             ChangesSection(state.changes)
             EquipmentSection(state.equipment)
-            state.basal?.let { BasalSection(it, state.profileChanges) }
-            Text(stringResource(R.string.patterns_meals_title), style = MaterialTheme.typography.titleMedium)
-            Text(stringResource(R.string.patterns_meals_intro), style = MaterialTheme.typography.bodySmall)
-            state.meals.forEach { MealCard(it, unit) }
             // data quality last: the trends above are what this tab is for
             EmptyDaysNotice(state.emptyDays)
         }
@@ -97,71 +98,92 @@ fun PatternsScreen(
 private fun hour(h: Int) = String.format(Locale.US, "%02d:00", h % 24)
 private fun pct(v: Double) = String.format(Locale.getDefault(), "%.0f", v)
 
+/** One time of day: glucose, the loop's basal against the profile, and glucose after meals, in one card. */
 @Composable
-private fun BlockCard(b: BlockStats, unit: GlucoseUnit) {
-    val tir = b.timeInRange
+private fun TimeBlockCard(g: BlockStats, basal: BasalBlockStats?, meal: MealBlockStats?, unit: GlucoseUnit) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(R.string.patterns_block_time, hour(b.startHour), hour(b.endHour)), style = MaterialTheme.typography.titleSmall)
-            if (!b.enoughDays) {
-                Text(stringResource(R.string.patterns_not_enough, b.days, TimeBlocks.MIN_DAYS))
-                return@Column
-            }
-            Text(stringResource(R.string.patterns_days, b.days), style = MaterialTheme.typography.bodySmall)
-            Text(stringResource(R.string.patterns_in_range, pct(tir.inRangePct)))
-            Text(stringResource(R.string.patterns_below, pct(tir.lowPct + tir.veryLowPct)))
-            Text(stringResource(R.string.patterns_above, pct(tir.highPct + tir.veryHighPct)))
-            Text(stringResource(R.string.patterns_average, unit.format(tir.meanMgdl), unit.label))
-            if (b.lowDays > 0) Text(stringResource(R.string.patterns_low_days, b.lowDays, b.days), color = MaterialTheme.colorScheme.error)
-            if (b.veryLowDays > 0) Text(stringResource(R.string.patterns_very_low_days, b.veryLowDays, b.days), color = MaterialTheme.colorScheme.error)
+            Text(stringResource(R.string.patterns_block_time, hour(g.startHour), hour(g.endHour)), style = MaterialTheme.typography.titleMedium)
+            Section(stringResource(R.string.patterns_glucose_title)) { GlucoseLines(g, unit) }
+            basal?.let { Section(stringResource(R.string.basal_title)) { BasalBlockLines(it) } }
+            meal?.let { Section(stringResource(R.string.patterns_meals_title)) { MealLines(it, unit) } }
         }
     }
 }
 
 @Composable
-private fun MealCard(m: MealBlockStats, unit: GlucoseUnit) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(R.string.patterns_block_time, hour(m.startHour), hour(m.endHour)), style = MaterialTheme.typography.titleSmall)
-            if (m.meals == 0) {
-                Text(stringResource(R.string.patterns_meals_count, 0))
-                return@Column
-            }
-            if (!m.enoughMeals) {
-                Text(stringResource(R.string.patterns_meals_not_enough, m.meals, PostMeal.MIN_MEALS))
-                return@Column
-            }
-            Text(stringResource(R.string.patterns_meals_count, m.meals), style = MaterialTheme.typography.bodySmall)
-            // A rise is a difference, so it converts without an offset.
-            Text(stringResource(R.string.patterns_meal_rise, unit.format(m.medianRiseMgdl), unit.label))
-            m.medianAt2hMgdl?.let { Text(stringResource(R.string.patterns_meal_2h, unit.format(it), unit.label)) }
-            if (m.withReading2h > 0) Text(stringResource(R.string.patterns_meal_high2h, m.highAt2h, m.withReading2h))
-            Text(
-                stringResource(R.string.patterns_meal_low4h, m.lowWithin4h, m.meals),
-                color = if (m.lowWithin4h > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-            )
-        }
+private fun Section(title: String, content: @Composable () -> Unit) {
+    Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
+    content()
+}
+
+@Composable
+private fun GlucoseLines(b: BlockStats, unit: GlucoseUnit) {
+    if (!b.enoughDays) {
+        Text(stringResource(R.string.patterns_not_enough, b.days, TimeBlocks.MIN_DAYS))
+        return
     }
+    val tir = b.timeInRange
+    Text(stringResource(R.string.patterns_days, b.days), style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(R.string.patterns_in_range, pct(tir.inRangePct)))
+    Text(stringResource(R.string.patterns_below, pct(tir.lowPct + tir.veryLowPct)))
+    Text(stringResource(R.string.patterns_above, pct(tir.highPct + tir.veryHighPct)))
+    Text(stringResource(R.string.patterns_average, unit.format(tir.meanMgdl), unit.label))
+    if (b.lowDays > 0) Text(stringResource(R.string.patterns_low_days, b.lowDays, b.days), color = MaterialTheme.colorScheme.error)
+    if (b.veryLowDays > 0) Text(stringResource(R.string.patterns_very_low_days, b.veryLowDays, b.days), color = MaterialTheme.colorScheme.error)
+}
+
+@Composable
+private fun BasalBlockLines(blk: BasalBlockStats) {
+    if (!blk.enoughDays) {
+        Text(stringResource(R.string.patterns_not_enough, blk.days, TimeBlocks.MIN_DAYS))
+    } else {
+        BasalLines(blk)
+    }
+}
+
+@Composable
+private fun MealLines(m: MealBlockStats, unit: GlucoseUnit) {
+    if (m.meals == 0) {
+        Text(stringResource(R.string.patterns_meals_count, 0))
+        return
+    }
+    if (!m.enoughMeals) {
+        Text(stringResource(R.string.patterns_meals_not_enough, m.meals, PostMeal.MIN_MEALS))
+        return
+    }
+    Text(stringResource(R.string.patterns_meals_count, m.meals), style = MaterialTheme.typography.bodySmall)
+    // A rise is a difference, so it converts without an offset.
+    Text(stringResource(R.string.patterns_meal_rise, unit.format(m.medianRiseMgdl), unit.label))
+    m.medianAt2hMgdl?.let { Text(stringResource(R.string.patterns_meal_2h, unit.format(it), unit.label)) }
+    if (m.withReading2h > 0) Text(stringResource(R.string.patterns_meal_high2h, m.highAt2h, m.withReading2h))
+    Text(
+        stringResource(R.string.patterns_meal_low4h, m.lowWithin4h, m.meals),
+        color = if (m.lowWithin4h > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+    )
 }
 
 private fun rate(v: Double) = String.format(Locale.getDefault(), "%.2f", v)
 private fun signed(v: Double) = String.format(Locale.getDefault(), "%+.0f", v)
 
-/** How often the closed loop ran above or below the profile basal, overall and by time of day. */
+/** What the loop-basal comparison below means, and how much of the period the loop was running. */
 @Composable
-private fun BasalSection(b: BasalComparisonResult, profileChanges: List<app.bganalyzer.domain.EffectiveProfile>) {
-    Text(stringResource(R.string.basal_title), style = MaterialTheme.typography.titleMedium)
+private fun BasalHeader(b: BasalComparisonResult) {
     Text(stringResource(R.string.basal_intro), style = MaterialTheme.typography.bodySmall)
     if (b.loopCoveragePct < 70) {
         Text(stringResource(R.string.basal_low_coverage, pct(b.loopCoveragePct)), color = MaterialTheme.colorScheme.error)
     } else {
         Text(stringResource(R.string.basal_coverage, pct(b.loopCoveragePct)), style = MaterialTheme.typography.bodySmall)
     }
-    ProfileChangesCard(profileChanges)
+}
+
+/** The whole day: how often the loop ran above or below the profile basal, and the total per day. */
+@Composable
+private fun OverallBasalCard(b: BasalComparisonResult) {
     val o = b.overall
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(R.string.basal_overall), style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.basal_overall), style = MaterialTheme.typography.titleMedium)
             if (!o.enoughDays) {
                 Text(stringResource(R.string.patterns_not_enough, o.days, TimeBlocks.MIN_DAYS))
                 return@Column
@@ -174,19 +196,6 @@ private fun BasalSection(b: BasalComparisonResult, profileChanges: List<app.bgan
                     stringResource(R.string.basal_temp_count, b.tempCount, rate(b.tempCount / b.periodDays), b.tempAbove, b.tempBelow, b.tempAt),
                     style = MaterialTheme.typography.bodySmall,
                 )
-            }
-        }
-    }
-    b.blocks.forEach { blk ->
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(stringResource(R.string.patterns_block_time, hour(blk.startHour), hour(blk.endHour)), style = MaterialTheme.typography.titleSmall)
-                if (!blk.enoughDays) {
-                    Text(stringResource(R.string.patterns_not_enough, blk.days, TimeBlocks.MIN_DAYS))
-                } else {
-                    Text(stringResource(R.string.patterns_days, blk.days), style = MaterialTheme.typography.bodySmall)
-                    BasalLines(blk)
-                }
             }
         }
     }
