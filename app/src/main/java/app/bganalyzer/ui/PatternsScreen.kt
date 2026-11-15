@@ -101,7 +101,6 @@ fun PatternsScreen(
                 Text(stringResource(R.string.patterns_no_data))
                 return@Column
             }
-            SuggestionsSection(state, sync is SyncState.Running)
             if (state.zoneName.isNotEmpty()) Text(stringResource(R.string.patterns_timezone, state.zoneName), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.patterns_glucose_title), style = MaterialTheme.typography.titleMedium)
             state.blocks.forEach { BlockCard(it, unit) }
@@ -242,39 +241,6 @@ private fun ProfileChangesCard(changes: List<app.bganalyzer.domain.EffectiveProf
     }
 }
 
-/** Advisory ideas only: the app never changes a setting. Each shows its evidence, and held-back ones say why. */
-@Composable
-private fun SuggestionsSection(state: PatternsState, syncing: Boolean) {
-    Text(stringResource(R.string.suggestions_title), style = MaterialTheme.typography.titleMedium)
-    Text(stringResource(R.string.suggestions_secondary_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
-    Text(stringResource(R.string.suggestions_intro), style = MaterialTheme.typography.bodySmall)
-    if (state.emptyDays.isNotEmpty()) {
-        Text(stringResource(R.string.suggestions_gaps, state.emptyDays.size), color = MaterialTheme.colorScheme.tertiary)
-    }
-    if (syncing) Text(stringResource(R.string.suggestions_syncing), color = MaterialTheme.colorScheme.tertiary)
-    val r = state.suggestions
-    if (r.suggestions.isEmpty() && r.held.isEmpty()) Text(stringResource(R.string.suggestions_none))
-    r.suggestions.forEach { s ->
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                val what = if (s.kind == app.bganalyzer.domain.SuggestionKind.BASAL) stringResource(R.string.suggestions_basal) else stringResource(R.string.suggestions_carb_ratio)
-                Text("$what ${hour(s.startHour)}-${hour(s.endHour)}", style = MaterialTheme.typography.titleSmall)
-                val change = stringResource(if (s.moreInsulin) R.string.suggestions_more else R.string.suggestions_less, s.changePct)
-                Text(if (s.fromUph != null && s.toUph != null) "$change (${rate(s.fromUph)} -> ${rate(s.toUph)} U/h)" else change)
-                Text(
-                    stringResource(R.string.suggestions_confidence, s.confidence.name.lowercase().replaceFirstChar { it.uppercase() }),
-                    style = MaterialTheme.typography.bodyMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = confidenceColor(s.confidence),
-                )
-                s.detail?.let { Text(it) }
-                s.evidence.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
-            }
-        }
-    }
-    r.held.forEach { h ->
-        val what = if (h.kind == app.bganalyzer.domain.SuggestionKind.BASAL) stringResource(R.string.suggestions_basal) else stringResource(R.string.suggestions_carb_ratio)
-        Text(stringResource(R.string.suggestions_held, what, hour(h.startHour), hour(h.endHour), h.reason), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-    }
-}
 
 /** Mark days as bad data, e.g. a pump failure with insulin pens in use. Excluded days are left out of every analysis here. */
 @Composable

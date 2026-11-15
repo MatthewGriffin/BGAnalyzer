@@ -126,23 +126,12 @@
     <string name="profile_changes_title">Profile switches in this period</string>
     <string name="profile_changes_none">No profile switches in this period. The comparison uses the profile in force when the period began.</string>
     <string name="profile_changes_more">%1$d earlier switches not shown.</string>
-    <string name="suggestions_title">Quick hints from patterns</string>
-    <string name="suggestions_intro">Ideas only. The app never changes a setting. Each change is capped at a small step, lows in a time of day stop increases there, and a number needs enough days or meals that agree. Check with your care team before changing settings.</string>
-    <string name="suggestions_gaps">%1$d days have no data from Nightscout, so confidence is lower. Sync this period first to fill what can be filled.</string>
-    <string name="suggestions_none">No suggestions: the data shows no consistent pattern, or there is not enough of it yet.</string>
-    <string name="suggestions_basal">Basal</string>
-    <string name="suggestions_carb_ratio">Carb ratio</string>
-    <string name="suggestions_more">More insulin: about %1$d%%</string>
-    <string name="suggestions_less">Less insulin: about %1$d%%</string>
-    <string name="suggestions_confidence">Confidence: %1$s</string>
-    <string name="suggestions_held">Held back, %1$s %2$s-%3$s: %4$s</string>
     <string name="excluded_title">Days excluded from analysis</string>
-    <string name="excluded_intro">Mark a day as bad data, for example when a pump failed and you used insulin pens. Excluded days are left out of the patterns, basal comparison and suggestions on this tab, and they are kept in your backup.</string>
+    <string name="excluded_intro">Mark a day as bad data, for example when a pump failed and you used insulin pens. Excluded days are left out of the patterns and basal comparison on this tab and out of Autotune, and they are kept in your backup.</string>
     <string name="excluded_day_label">Day to exclude</string>
     <string name="excluded_note_label">Note (optional, default: Pump failure)</string>
     <string name="excluded_button">Exclude this day</string>
     <string name="excluded_restore">Restore</string>
-    <string name="suggestions_syncing">Syncing this period first. The suggestions below update when it finishes.</string>
     <string name="changes_title">Before and after profile changes</string>
     <string name="changes_intro">Up to 7 days either side of each profile change, stopping at the neighbouring change. This shows what happened, not why: meals, illness and activity differ between weeks.</string>
     <string name="changes_basal">Total basal per day: %1$s U before, %2$s U after</string>
@@ -182,7 +171,7 @@
     <string name="autotune_insulin_ultra">Ultra-rapid, peak 55 min (Fiasp)</string>
     <string name="autotune_insulin_lyumjev">Lyumjev, peak 45 min</string>
     <string name="no_insulin_title">%1$d days have glucose but no insulin records</string>
-    <string name="no_insulin_intro">No boluses and no loop temp basals were recorded on these days, so the pump was probably off or had failed and insulin went unrecorded (for example pens). Their glucose says nothing about basal or sensitivity. Suggestions and autotune already skip them; excluding them also removes them from the other patterns here.</string>
+    <string name="no_insulin_intro">No boluses and no loop temp basals were recorded on these days, so the pump was probably off or had failed and insulin went unrecorded (for example pens). Their glucose says nothing about basal or sensitivity. Autotune already skips them; excluding them also removes them from the patterns here.</string>
     <string name="no_insulin_button">Exclude these days</string>
     <string name="autotune_evidence">Based on %1$d meals and %2$d insulin-only readings.</string>
     <string name="autotune_evidence_low">That is little data: treat the carb ratio and sensitivity as low confidence.</string>
@@ -203,5 +192,5 @@
     <string name="autotune_row_cr">Carb ratio (g per U)</string>
     <string name="autotune_blocks">Basal as profile entries</string>
     <string name="autotune_blocks_note">The suggested basal with equal neighbouring hours merged, rounded to 0.05 U/h: the entries to type into a new profile.</string>
-    <string name="suggestions_secondary_note">These are simple pattern rules. Autotune (next tab) is the main advice and is more reliable.</string>
+    <string name="autotune_syncing">Syncing the latest data first. Run autotune when it finishes.</string>
 </resources>
