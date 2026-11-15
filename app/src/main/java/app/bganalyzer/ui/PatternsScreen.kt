@@ -46,11 +46,6 @@ fun PatternsScreen(
     onExcludeDay: (String, String) -> Unit = { _, _ -> },
     onRestoreDay: (String) -> Unit = {},
     onExcludeDays: (List<String>, String) -> Unit = { _, _ -> },
-    autotuneState: AutotuneState = AutotuneState.Idle,
-    onAutotune: (Int) -> Unit = {},
-    onAutotuneClear: () -> Unit = {},
-    insulinPeak: Int = 75,
-    onInsulinPeak: (Int) -> Unit = {},
 ) {
     Scaffold(contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0), topBar = { TopAppBar(title = { Text(stringResource(R.string.patterns_title)) }) }) { padding ->
         Column(
@@ -115,7 +110,6 @@ fun PatternsScreen(
             Text(stringResource(R.string.patterns_meals_title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(R.string.patterns_meals_intro), style = MaterialTheme.typography.bodySmall)
             state.meals.forEach { MealCard(it, unit) }
-            AutotuneSection(autotuneState, unit, insulinPeak, onInsulinPeak, onAutotune, onAutotuneClear)
         }
     }
 }
@@ -252,6 +246,7 @@ private fun ProfileChangesCard(changes: List<app.bganalyzer.domain.EffectiveProf
 @Composable
 private fun SuggestionsSection(state: PatternsState, syncing: Boolean) {
     Text(stringResource(R.string.suggestions_title), style = MaterialTheme.typography.titleMedium)
+    Text(stringResource(R.string.suggestions_secondary_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
     Text(stringResource(R.string.suggestions_intro), style = MaterialTheme.typography.bodySmall)
     if (state.emptyDays.isNotEmpty()) {
         Text(stringResource(R.string.suggestions_gaps, state.emptyDays.size), color = MaterialTheme.colorScheme.tertiary)

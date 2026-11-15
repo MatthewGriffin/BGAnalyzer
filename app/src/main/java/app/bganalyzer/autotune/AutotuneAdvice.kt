@@ -25,7 +25,26 @@ data class AutotuneAdvice(
     val isfPoints: Int = 0,
 )
 
+/** Consecutive hours that get the same rate once rounded: one profile entry. [endHour] is exclusive (24 = midnight). */
+data class BasalBlock(val startHour: Int, val endHour: Int, val rate: Double)
+
 object AutotuneAdvisor {
+    /** Pumps deliver basal in steps of 0.05 U/h (Omnipod), so suggested rates are rounded to it. */
+    const val PUMP_STEP = 0.05
+
+    fun roundToPumpStep(v: Double): Double = Math.round(v / PUMP_STEP) * PUMP_STEP
+
+    /** The suggested 24 hourly rates, rounded to the pump step, merged into as few profile entries as possible. */
+    fun blocks(hours: List<HourAdvice>): List<BasalBlock> {
+        val out = ArrayList<BasalBlock>()
+        for (h in hours.sortedBy { it.hour }) {
+            val rate = Math.round(roundToPumpStep(h.suggested) * 100) / 100.0
+            val last = out.lastOrNull()
+            if (last != null && last.rate == rate) out[out.size - 1] = last.copy(endHour = h.hour + 1) else out += BasalBlock(h.hour, h.hour + 1, rate)
+        }
+        return out
+    }
+
     /** Fewer meals than this over the run makes the carb ratio low confidence; fewer insulin-only readings does the same for the ISF. */
     const val MIN_MEALS = 10
     const val MIN_ISF_POINTS = 20

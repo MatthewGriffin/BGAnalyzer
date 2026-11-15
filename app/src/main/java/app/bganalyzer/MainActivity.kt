@@ -21,6 +21,7 @@ import app.bganalyzer.ui.BackupViewModel
 import app.bganalyzer.ui.GlucoseScreen
 import app.bganalyzer.ui.PatternsScreen
 import app.bganalyzer.ui.PatternsViewModel
+import app.bganalyzer.ui.AutotuneScreen
 import app.bganalyzer.ui.AutotuneViewModel
 import app.bganalyzer.ui.GlucoseViewModel
 import androidx.compose.runtime.collectAsState
@@ -79,10 +80,16 @@ class MainActivity : ComponentActivity() {
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     bottomBar = {
                         NavigationBar {
-                            listOf(R.string.tab_glucose, R.string.tab_patterns, R.string.tab_connection, R.string.tab_backup).forEachIndexed { i, label ->
+                            listOf(R.string.tab_glucose, R.string.tab_autotune, R.string.tab_patterns, R.string.tab_connection, R.string.tab_backup).forEachIndexed { i, label ->
                                 NavigationBarItem(
                                     selected = tab == i,
-                                    onClick = { tab = i; if (i == 0) glucose.refreshWindow(); if (i == 1) { patterns.refresh(); glucose.syncIfStale(patterns.state.value.days) } },
+                                    onClick = {
+                                        tab = i
+                                        if (i == 0) glucose.refreshWindow()
+                                        // Autotune and Patterns work on the saved data, so bring the last period up to date first.
+                                        if (i == 1) glucose.syncIfStale(30)
+                                        if (i == 2) { patterns.refresh(); glucose.syncIfStale(patterns.state.value.days) }
+                                    },
                                     icon = {},
                                     label = { Text(stringResource(label)) },
                                     alwaysShowLabel = true,
@@ -104,19 +111,21 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 } else if (tab == 1) {
-                    val patternsState by patterns.state.collectAsState()
                     val autotuneState by autotune.state.collectAsState()
                     val insulinPeak by autotune.peak.collectAsState()
+                    Box(Modifier.padding(inner)) {
+                        AutotuneScreen(autotuneState, glucoseState.unit, insulinPeak, syncState, autotune::setPeak, autotune::run, autotune::clear)
+                    }
+                } else if (tab == 2) {
+                    val patternsState by patterns.state.collectAsState()
                     Box(Modifier.padding(inner)) {
                         PatternsScreen(
                             patternsState, glucoseState.unit, syncState, glucose.hasConnection,
                             patterns::setDays, patterns::setBlockHours, onSync = { glucose.sync(patternsState.days) },
                             onExcludeDay = patterns::excludeDay, onRestoreDay = patterns::restoreDay, onExcludeDays = patterns::excludeDays,
-                            autotuneState = autotuneState, onAutotune = autotune::run, onAutotuneClear = autotune::clear,
-                            insulinPeak = insulinPeak, onInsulinPeak = autotune::setPeak,
                         )
                     }
-                } else if (tab == 3) {
+                } else if (tab == 4) {
                     Box(Modifier.padding(inner)) {
                         BackupScreen(backupState, onSave = backup::save, onRestore = backup::restore)
                     }
