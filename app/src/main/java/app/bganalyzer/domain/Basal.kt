@@ -45,20 +45,31 @@ object BasalTimeline {
         toMs: Long,
         zone: ZoneId,
     ): List<BasalSegment> {
-        val temps = treatments.filter { it.eventType == "Temp Basal" && it.valid && it.rateUph != null && it.durationMs != null }
-            .sortedBy { it.timestampMs }
         val result = ArrayList<BasalSegment>()
         var cursor = fromMs
-        for ((i, t) in temps.withIndex()) {
-            val end = minOf(t.timestampMs + t.durationMs!!, temps.getOrNull(i + 1)?.timestampMs ?: Long.MAX_VALUE, toMs)
-            val start = maxOf(t.timestampMs, fromMs)
-            if (end <= start) continue
-            if (start > cursor) fillScheduled(result, profiles, cursor, start, zone)
-            result += BasalSegment(start, end, t.rateUph!!, scheduled = false)
-            cursor = end
+        for (seg in tempSegments(treatments, fromMs, toMs)) {
+            if (seg.startMs > cursor) fillScheduled(result, profiles, cursor, seg.startMs, zone)
+            result += seg
+            cursor = seg.endMs
         }
         if (cursor < toMs) fillScheduled(result, profiles, cursor, toMs, zone)
         return result
+    }
+
+    /**
+     * Only the temp basals, over [fromMs, toMs): each runs for its duration or until the next one starts, whichever is
+     * first; a record with zero duration ends the previous one. Time with no temp basal running is not in the list.
+     */
+    fun tempSegments(treatments: List<TreatmentEntity>, fromMs: Long, toMs: Long): List<BasalSegment> {
+        val temps = treatments.filter { it.eventType == "Temp Basal" && it.valid && it.rateUph != null && it.durationMs != null }
+            .sortedBy { it.timestampMs }
+        val out = ArrayList<BasalSegment>()
+        for ((i, t) in temps.withIndex()) {
+            val end = minOf(t.timestampMs + t.durationMs!!, temps.getOrNull(i + 1)?.timestampMs ?: Long.MAX_VALUE, toMs)
+            val start = maxOf(t.timestampMs, fromMs)
+            if (end > start) out += BasalSegment(start, end, t.rateUph!!, scheduled = false)
+        }
+        return out
     }
 
     private fun fillScheduled(out: MutableList<BasalSegment>, profiles: List<ProfileEntity>, from: Long, to: Long, zone: ZoneId) {
