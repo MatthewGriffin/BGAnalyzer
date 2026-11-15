@@ -105,6 +105,7 @@ fun PatternsScreen(
             Text(stringResource(R.string.patterns_glucose_title), style = MaterialTheme.typography.titleMedium)
             state.blocks.forEach { BlockCard(it, unit) }
             ChangesSection(state.changes)
+            EquipmentSection(state.equipment)
             state.basal?.let { BasalSection(it, state.profileChanges) }
             Text(stringResource(R.string.patterns_meals_title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(R.string.patterns_meals_intro), style = MaterialTheme.typography.bodySmall)
@@ -307,4 +308,29 @@ private fun ChangesSection(changes: List<app.bganalyzer.domain.ChangeResult>) {
 private fun PeriodLine(label: String, p: app.bganalyzer.domain.PeriodSummary) {
     val t = p.timeInRange
     Text(stringResource(R.string.changes_line, label, String.format(Locale.getDefault(), "%.1f", p.days), pct(t.inRangePct), pct(t.lowPct + t.veryLowPct), pct(t.highPct + t.veryHighPct)))
+}
+
+/** What glucose did in the days before and after each site, insulin or sensor change. Shows what happened, not why. */
+@Composable
+private fun EquipmentSection(results: List<app.bganalyzer.domain.EquipmentResult>) {
+    val fmt = androidx.compose.runtime.remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT) }
+    Text(stringResource(R.string.equipment_title), style = MaterialTheme.typography.titleMedium)
+    if (results.isEmpty()) {
+        Text(stringResource(R.string.equipment_none), style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    Text(stringResource(R.string.equipment_intro), style = MaterialTheme.typography.bodySmall)
+    results.take(10).forEach { r ->
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("${fmt.format(java.util.Date(r.change.startMs))}  ${r.change.label}", style = MaterialTheme.typography.titleSmall)
+                if (!r.before.enough || !r.after.enough) {
+                    Text(stringResource(R.string.changes_not_enough, pct(r.before.days), pct(r.after.days)))
+                } else {
+                    PeriodLine(stringResource(R.string.changes_before), r.before)
+                    PeriodLine(stringResource(R.string.changes_after), r.after)
+                }
+            }
+        }
+    }
 }

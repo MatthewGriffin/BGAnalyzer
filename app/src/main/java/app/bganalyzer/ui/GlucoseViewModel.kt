@@ -83,8 +83,10 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
     private val store = ConnectionStore(app)
     private val rest = RestStore(app)
     private val days = MutableStateFlow(7)
-    private val unit = MutableStateFlow(GlucoseUnit.MMOL)
     private val viewPrefs = app.getSharedPreferences("view_settings", android.content.Context.MODE_PRIVATE)
+    private val unit = MutableStateFlow(
+        runCatching { GlucoseUnit.valueOf(viewPrefs.getString("glucose_unit", null) ?: "") }.getOrDefault(GlucoseUnit.MMOL),
+    )
     private val layout = MutableStateFlow(
         runCatching { ChartLayout.valueOf(viewPrefs.getString("chart_layout", null) ?: "") }.getOrDefault(ChartLayout.OVERLAID),
     )
@@ -139,7 +141,11 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Moves the window to the current time, e.g. when the screen is opened again. */
     fun refreshWindow() = refresh.update { it + 1 }
-    fun setUnit(value: GlucoseUnit) = unit.update { value }
+    /** Remembered between launches. */
+    fun setUnit(value: GlucoseUnit) {
+        unit.value = value
+        viewPrefs.edit().putString("glucose_unit", value.name).apply()
+    }
 
     /** Remembered between launches. */
     fun setLayout(value: ChartLayout) {
