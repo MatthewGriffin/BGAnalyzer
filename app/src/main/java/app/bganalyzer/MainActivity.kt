@@ -111,7 +111,7 @@ class MainActivity : ComponentActivity() {
                         PatternsScreen(
                             patternsState, glucoseState.unit, syncState, glucose.hasConnection,
                             patterns::setDays, patterns::setBlockHours, onSync = { glucose.sync(patternsState.days) },
-                            onExcludeDay = patterns::excludeDay, onRestoreDay = patterns::restoreDay,
+                            onExcludeDay = patterns::excludeDay, onRestoreDay = patterns::restoreDay, onExcludeDays = patterns::excludeDays,
                             autotuneState = autotuneState, onAutotune = autotune::run, onAutotuneClear = autotune::clear,
                             insulinPeak = insulinPeak, onInsulinPeak = autotune::setPeak,
                         )

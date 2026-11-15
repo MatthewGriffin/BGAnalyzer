@@ -130,7 +130,7 @@ object BasalComparison {
         // Per-record view: how each temp basal compared with the schedule when it was set.
         var above = 0; var below = 0; var at = 0; var count = 0
         for (tb in treatments) {
-            if (tb.eventType != "Temp Basal" || !tb.valid || tb.rateUph == null || tb.timestampMs !in fromMs until toMs || (tb.durationMs ?: 0L) <= 0L) continue
+            if (tb.eventType != "Temp Basal" || !tb.valid || tb.rateUph == null || tb.timestampMs !in fromMs until toMs || (tb.durationMs ?: 0L) <= 0L || (tb.durationMs ?: 0L) > BasalTimeline.MAX_TEMP_MS) continue
             val scheduled = resolver.basalAt(tb.timestampMs, zone) ?: continue
             count++
             when {

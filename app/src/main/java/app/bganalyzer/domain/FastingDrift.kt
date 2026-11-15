@@ -34,7 +34,11 @@ object FastingDrift {
     fun events(treatments: List<TreatmentEntity>): List<Long> =
         treatments.filter { it.valid && ((it.carbs ?: 0.0) > 0 || ((it.insulin ?: 0.0) > 0 && !it.isSmb)) }.map { it.timestampMs }.sorted()
 
-    fun analyze(readings: List<GlucoseReadingEntity>, treatments: List<TreatmentEntity>, zone: ZoneId, blockHours: Int): List<DriftBlockStats> {
+    /**
+     * [insulinDays] are the local dates that have insulin records ([DayQuality.daysWithInsulin]); a block on any other date is
+     * skipped, because a day with no insulin records is a pump or logging failure, not a quiet day. Null skips that check.
+     */
+    fun analyze(readings: List<GlucoseReadingEntity>, treatments: List<TreatmentEntity>, zone: ZoneId, blockHours: Int, insulinDays: Set<String>? = null): List<DriftBlockStats> {
         require(blockHours in TimeBlocks.ALLOWED_BLOCK_HOURS)
         val ev = events(treatments)
         val cells = HashMap<Pair<java.time.LocalDate, Int>, MutableList<GlucoseReadingEntity>>()
@@ -45,6 +49,7 @@ object FastingDrift {
         val slopes = HashMap<Int, MutableList<Double>>()
         for ((key, list) in cells) {
             if (list.size < blockHours * 12 * MIN_COVERAGE) continue
+            if (insulinDays != null && key.first.toString() !in insulinDays) continue
             val first = list.minOf { it.timestampMs }; val last = list.maxOf { it.timestampMs }
             if (ev.any { it in (first - QUIET_BEFORE_MS)..last }) continue
             if (list.any { it.mgdl < LOW_MGDL }) continue

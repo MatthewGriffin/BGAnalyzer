@@ -71,6 +71,12 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
             Text(stringResource(R.string.autotune_isf, unit.format(a.currentIsf), unit.format(a.tunedIsf), unit.label))
             Text(stringResource(R.string.autotune_cr, rate(a.currentCarbRatio), rate(a.tunedCarbRatio)))
             Text(stringResource(R.string.autotune_isf_cr_note), style = MaterialTheme.typography.bodySmall)
+            val lowCr = a.mealsUsed < app.bganalyzer.autotune.AutotuneAdvisor.MIN_MEALS
+            val lowIsf = a.isfPoints < app.bganalyzer.autotune.AutotuneAdvisor.MIN_ISF_POINTS
+            Text(
+                stringResource(R.string.autotune_evidence, a.mealsUsed, a.isfPoints) + if (lowCr || lowIsf) " " + stringResource(R.string.autotune_evidence_low) else "",
+                style = MaterialTheme.typography.bodySmall, color = if (lowCr || lowIsf) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+            )
         }
     }
     Card(Modifier.fillMaxWidth()) {

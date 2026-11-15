@@ -45,6 +45,7 @@ fun PatternsScreen(
     onSync: () -> Unit,
     onExcludeDay: (String, String) -> Unit = { _, _ -> },
     onRestoreDay: (String) -> Unit = {},
+    onExcludeDays: (List<String>, String) -> Unit = { _, _ -> },
     autotuneState: AutotuneState = AutotuneState.Idle,
     onAutotune: (Int) -> Unit = {},
     onAutotuneClear: () -> Unit = {},
@@ -89,6 +90,18 @@ fun PatternsScreen(
             }
             EmptyDaysNotice(state.emptyDays)
             ExcludedDaysSection(state, onExcludeDay, onRestoreDay)
+            if (state.noInsulinDays.isNotEmpty()) {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.no_insulin_title, state.noInsulinDays.size), style = MaterialTheme.typography.titleSmall)
+                        Text(stringResource(R.string.no_insulin_intro), style = MaterialTheme.typography.bodySmall)
+                        Text(state.noInsulinDays.joinToString(", "), style = MaterialTheme.typography.bodySmall)
+                        androidx.compose.material3.Button(onClick = { onExcludeDays(state.noInsulinDays, "No insulin records (pump off?)") }) {
+                            Text(stringResource(R.string.no_insulin_button))
+                        }
+                    }
+                }
+            }
             if (state.loaded && state.readingCount == 0) {
                 Text(stringResource(R.string.patterns_no_data))
                 return@Column

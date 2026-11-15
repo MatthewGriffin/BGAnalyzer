@@ -17,6 +17,9 @@ data class AutotuneResult(
     val daysTuned: Int,
     val skipped: List<SkippedDay>,
     val log: List<String>,
+    /** Meals that went into the carb ratio, and insulin-only readings that went into the ISF, over all days used. */
+    val mealsUsed: Int = 0,
+    val isfPoints: Int = 0,
 )
 
 /** Everything a run reads from the app's data. Pure lists and one lookup so the run can be tested without a database. */
@@ -64,6 +67,8 @@ object AutotuneRun {
         val skipped = ArrayList<SkippedDay>()
         var tuned = baseline
         var used = 0
+        var mealCount = 0
+        var isfPoints = 0
         val endLocal = ZonedDateTime.ofInstant(java.time.Instant.ofEpochMilli(endMs), zone)
         for (i in 0 until daysBack) {
             progress(i + 1, daysBack)
@@ -78,14 +83,20 @@ object AutotuneRun {
             val readings = data.readings.filter { it.timeMs in from..to }
             val boluses = data.boluses.filter { it.timeMs in (from - lookback)..to }
             if (readings.none { it.mgdl > 39 }) { skipped += SkippedDay(date, "no glucose readings"); continue }
+            // A day with no recorded insulin is a pump failure or missing upload (pens), not a quiet day: skip it.
+            val dayBasal = data.basalBetween(from, to)
+            val realBoluses = data.boluses.count { it.timeMs in from..to }
+            if (realBoluses == 0 && dayBasal.count { !it.scheduled } < 20) { skipped += SkippedDay(date, "no insulin records (pump off or pens?)"); continue }
             val doses = AutotuneDoses.build(boluses, data.basalBetween(from - lookback, to), tuned, zone)
             if (doses.isEmpty()) { skipped += SkippedDay(date, "no insulin data"); continue }
             val meals = data.meals.filter { it.timeMs in (from - lookback)..to }
             val prepped = AutotunePrep.categorize(PrepInput(readings, meals, doses), tuned, zone, limits.min5mCarbImpact, options, log)
             if (prepped == null) { skipped += SkippedDay(date, "not enough data to categorise"); continue }
+            mealCount += prepped.crData.size
+            isfPoints += prepped.isfGlucose.size
             tuned = AutotuneCore.tune(prepped, tuned, baseline, limits, zone, log)
             used++
         }
-        return AutotuneResult(baseline, tuned, used, skipped, log.lines)
+        return AutotuneResult(baseline, tuned, used, skipped, log.lines, mealCount, isfPoints)
     }
 }

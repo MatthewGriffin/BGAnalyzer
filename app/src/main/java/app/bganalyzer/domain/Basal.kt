@@ -13,6 +13,12 @@ data class BasalSegment(val startMs: Long, val endMs: Long, val rateUph: Double,
 data class BasalStep(val secondsFromMidnight: Int, val rateUph: Double)
 
 object BasalTimeline {
+    /**
+     * A temp basal record longer than this is not credible (AAPS loops set minutes to a few hours). One was found recorded as
+     * 80 hours at 0 U/h when a pump failed and nothing closed it, which would read as days of suspended insulin.
+     */
+    const val MAX_TEMP_MS = 24 * 3_600_000L
+
     /** Reads the basal schedule of the default profile from an uploaded profile document. Empty if it has none. */
     fun schedule(profile: ProfileEntity): List<BasalStep> {
         val doc = runCatching { Document.parse(profile.rawJson) }.getOrNull() ?: return emptyList()
@@ -62,7 +68,7 @@ object BasalTimeline {
      * first; a record with zero duration ends the previous one. Time with no temp basal running is not in the list.
      */
     fun tempSegments(treatments: List<TreatmentEntity>, fromMs: Long, toMs: Long): List<BasalSegment> {
-        val temps = treatments.filter { it.eventType == "Temp Basal" && it.valid && it.rateUph != null && it.durationMs != null }
+        val temps = treatments.filter { it.eventType == "Temp Basal" && it.valid && it.rateUph != null && it.durationMs != null && it.durationMs <= MAX_TEMP_MS }
             .sortedBy { it.timestampMs }
         val out = ArrayList<BasalSegment>()
         for ((i, t) in temps.withIndex()) {
