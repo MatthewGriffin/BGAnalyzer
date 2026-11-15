@@ -14,6 +14,10 @@ import javax.crypto.spec.GCMParameterSpec
 /**
  * Keeps the MongoDB address (which contains the password) and the database name.
  * The address is encrypted with a key held in the Android Keystore, so it cannot be read from a copy of the file.
+ *
+ * Saved values must survive app updates. Do not rename the preferences file, its keys, the Keystore alias or
+ * the cipher format, and do not change `applicationId`, without a migration that reads the old values first.
+ * `ConnectionStoreTest` pins the names.
  */
 class ConnectionStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("connection", Context.MODE_PRIVATE)
