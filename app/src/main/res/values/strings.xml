@@ -62,7 +62,7 @@
     <string name="patterns_block_label">Block size</string>
     <string name="patterns_block_hours">%1$d hours</string>
     <string name="patterns_timezone">Times are in %1$s.</string>
-    <string name="patterns_glucose_title">Glucose by time of day</string>
+    <string name="patterns_glucose_title">Glucose</string>
     <string name="patterns_block_time">%1$s–%2$s</string>
     <string name="patterns_days">%1$d days of data</string>
     <string name="patterns_not_enough">Only %1$d days of data (at least %2$d needed), so no pattern is shown.</string>
@@ -111,7 +111,7 @@
     <string name="empty_days_treatments">Treatments (boluses, carbs, temp basals)</string>
     <string name="empty_days_iob">Loop insulin on board</string>
     <string name="empty_days_glucose">Glucose</string>
-    <string name="basal_title">Loop basal vs profile basal</string>
+    <string name="basal_title">Loop basal vs profile</string>
     <string name="basal_intro">How often the closed loop ran a higher or lower basal than your profile schedule, from the temp basals it set. Percentages are of the time a temp basal was running. The baseline is the profile that was in force at each moment, including any percentage and time shift (AAPS switch records).</string>
     <string name="basal_coverage">Loop data covers %1$s%% of this period.</string>
     <string name="basal_low_coverage">Loop data covers only %1$s%% of this period (temp basals are missing for the rest), so these numbers describe part of it.</string>
