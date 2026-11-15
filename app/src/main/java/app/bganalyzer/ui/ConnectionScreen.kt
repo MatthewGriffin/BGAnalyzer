@@ -14,18 +14,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.bganalyzer.R
@@ -51,7 +44,6 @@ fun ConnectionScreen(
     onDatabaseChange: (String) -> Unit,
     onTest: () -> Unit,
 ) {
-    var showAddress by rememberSaveable { mutableStateOf(false) }
     Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.connection_title)) }) }) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
@@ -64,13 +56,9 @@ fun ConnectionScreen(
                 label = { Text(stringResource(R.string.connection_uri_label)) },
                 placeholder = { Text(stringResource(R.string.connection_uri_placeholder)) },
                 singleLine = true,
-                visualTransformation = if (showAddress) VisualTransformation.None else PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
                 modifier = Modifier.fillMaxWidth(),
             )
-            TextButton(onClick = { showAddress = !showAddress }) {
-                Text(stringResource(if (showAddress) R.string.connection_hide_address else R.string.connection_show_address))
-            }
             OutlinedTextField(
                 value = database,
                 onValueChange = onDatabaseChange,
