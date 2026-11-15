@@ -177,4 +177,8 @@
     <string name="rest_auth_secret">API secret</string>
     <string name="rest_token_label">Access token</string>
     <string name="rest_secret_label">API secret</string>
+    <string name="autotune_insulin_label">Insulin type (sets the peak activity time)</string>
+    <string name="autotune_insulin_rapid">Rapid-acting, peak 75 min (Humalog, NovoRapid, Apidra)</string>
+    <string name="autotune_insulin_ultra">Ultra-rapid, peak 55 min (Fiasp)</string>
+    <string name="autotune_insulin_lyumjev">Lyumjev, peak 45 min</string>
 </resources>

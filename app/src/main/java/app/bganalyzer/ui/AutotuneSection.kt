@@ -27,7 +27,7 @@ private val AUTOTUNE_DAYS = listOf(5, 7, 14, 21, 30)
 
 /** Autotune (ported from AndroidAPS) as advice only: nothing is changed in any profile. */
 @Composable
-fun AutotuneSection(state: AutotuneState, unit: GlucoseUnit, hasData: Boolean, onRun: (Int) -> Unit, onClear: () -> Unit) {
+fun AutotuneSection(state: AutotuneState, unit: GlucoseUnit, peak: Int, onPeak: (Int) -> Unit, onRun: (Int) -> Unit, onClear: () -> Unit) {
     var days by remember { mutableIntStateOf(14) }
     Text(stringResource(R.string.autotune_title), style = MaterialTheme.typography.titleMedium)
     Text(stringResource(R.string.autotune_intro), style = MaterialTheme.typography.bodySmall)
@@ -37,6 +37,14 @@ fun AutotuneSection(state: AutotuneState, unit: GlucoseUnit, hasData: Boolean, o
         selected = days,
         text = { stringResource(R.string.range_days, it) },
         onSelect = { days = it },
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Dropdown(
+        label = stringResource(R.string.autotune_insulin_label),
+        options = AutotuneViewModel.INSULIN_PEAKS,
+        selected = peak,
+        text = { stringResource(when (it) { 55 -> R.string.autotune_insulin_ultra; 45 -> R.string.autotune_insulin_lyumjev; else -> R.string.autotune_insulin_rapid }) },
+        onSelect = onPeak,
         modifier = Modifier.fillMaxWidth(),
     )
     Button(onClick = { onRun(days) }, enabled = state !is AutotuneState.Running) { Text(stringResource(R.string.autotune_run)) }

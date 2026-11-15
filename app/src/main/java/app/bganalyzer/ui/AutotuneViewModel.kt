@@ -9,6 +9,7 @@ import app.bganalyzer.autotune.AtReading
 import app.bganalyzer.autotune.AutotuneAdvice
 import app.bganalyzer.autotune.AutotuneAdvisor
 import app.bganalyzer.autotune.AutotuneData
+import app.bganalyzer.autotune.AutotuneDoses
 import app.bganalyzer.autotune.AutotuneLimits
 import app.bganalyzer.autotune.AutotuneResult
 import app.bganalyzer.autotune.AutotuneRun
@@ -34,8 +35,18 @@ sealed interface AutotuneState {
 
 class AutotuneViewModel(app: Application) : AndroidViewModel(app) {
     private val db = AppDatabase.get(app)
+    private val prefs = app.getSharedPreferences("view_settings", android.content.Context.MODE_PRIVATE)
     private val _state = MutableStateFlow<AutotuneState>(AutotuneState.Idle)
     val state: StateFlow<AutotuneState> = _state
+
+    /** The insulin's peak activity time in minutes. The profile does not carry it, so the user picks the insulin type. */
+    private val _peak = MutableStateFlow(prefs.getInt(KEY_PEAK, LocalInsulin.DEFAULT_PEAK).takeIf { it in INSULIN_PEAKS } ?: LocalInsulin.DEFAULT_PEAK)
+    val peak: StateFlow<Int> = _peak
+
+    fun setPeak(minutes: Int) {
+        _peak.value = minutes
+        prefs.edit().putInt(KEY_PEAK, minutes).apply()
+    }
 
     /** Runs autotune over the last [days] full days (4 AM to 4 AM). Reads the saved data only; sync first for a full period. */
     fun run(days: Int) {
@@ -66,9 +77,15 @@ class AutotuneViewModel(app: Application) : AndroidViewModel(app) {
         val treatments = ExcludedDays.treatments(db.treatmentDao().validBetween(from - lookback, end), zone, excluded)
         val readings = ExcludedDays.readings(db.glucoseReadingDao().between(from, end), zone, excluded).map { AtReading(it.timestampMs, it.mgdl) }
         // priming and zero-insulin records carry no insulin that acts
-        val boluses = treatments.filter { (it.insulin ?: 0.0) > 0 && it.eventType?.contains("prim", ignoreCase = true) != true }.map { Dose(it.timestampMs, it.insulin!!) }
+        val boluses = treatments.filter { (it.insulin ?: 0.0) > 0 && it.eventType?.contains("prim", ignoreCase = true) != true }.map { Dose(it.timestampMs, it.insulin!!) } +
+            // extended boluses (not the ones AAPS emulates with a temp basal, which are already in the temp basals)
+            treatments.filter { it.eventType == "Combo Bolus" && (it.durationMs ?: 0L) > 0 }.flatMap { t ->
+                val doc = runCatching { org.bson.Document.parse(t.rawJson) }.getOrNull()
+                val units = (doc?.get("enteredinsulin") as? Number)?.toDouble() ?: 0.0
+                if (doc?.get("isEmulatingTempBasal") == true) emptyList() else AutotuneDoses.extended(t.timestampMs, t.durationMs!!, units)
+            }
         val meals = treatments.filter { (it.carbs ?: 0.0) > 0 }.map { AtMeal(it.timestampMs, it.carbs!!) }
-        val baseline = AtProfile(basal, isf, ic, (settings.diaHours ?: LocalInsulin.DEFAULT_DIA).coerceAtLeast(LocalInsulin.MIN_DIA), LocalInsulin.DEFAULT_PEAK)
+        val baseline = AtProfile(basal, isf, ic, (settings.diaHours ?: LocalInsulin.DEFAULT_DIA).coerceAtLeast(LocalInsulin.MIN_DIA), _peak.value)
         val data = AutotuneData(readings, boluses, meals) { f, t -> BasalTimeline.build(treatments, resolver, f, t, zone) }
         val result = AutotuneRun.run(data, baseline, AutotuneLimits(), zone, end, days, skipDate = { it in excluded }) { d, n -> _state.value = AutotuneState.Running(d, n) }
         if (result.daysTuned == 0) {
@@ -77,8 +94,11 @@ class AutotuneViewModel(app: Application) : AndroidViewModel(app) {
         return AutotuneState.Done(AutotuneAdvisor.advise(result, readings, zone), result, days)
     }
 
-    private companion object {
-        const val HOUR_MS = 3_600_000L
+    companion object {
+        const val KEY_PEAK = "insulin_peak"
+        /** Peak times AAPS uses: rapid-acting 75, ultra-rapid (Fiasp) 55, Lyumjev 45. */
+        val INSULIN_PEAKS = listOf(75, 55, 45)
+        private const val HOUR_MS = 3_600_000L
         const val DAY_MS = 24 * HOUR_MS
     }
 }

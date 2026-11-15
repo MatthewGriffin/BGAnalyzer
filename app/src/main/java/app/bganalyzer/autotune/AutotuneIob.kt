@@ -61,6 +61,18 @@ object AutotuneDoses {
         return out.sortedBy { it.timeMs }
     }
 
+    /**
+     * An extended bolus as many small doses, one about every five minutes, each in the middle of its slice (AAPS
+     * `convertToBoluses(EB)`). AAPS multiplies the slice length by 60,000 a second time there, which would push the
+     * doses far into the future; this keeps the slices inside the bolus.
+     */
+    fun extended(timeMs: Long, durationMs: Long, units: Double): List<Dose> {
+        if (durationMs <= 0 || units == 0.0) return emptyList()
+        val count = (durationMs / (5 * 60_000L) + 1).toInt()
+        val spacing = durationMs / count.toDouble()
+        return (0 until count).map { j -> Dose((timeMs + j * spacing + 0.5 * spacing).toLong(), units / count) }
+    }
+
     private fun msFromMidnight(t: Long, zone: ZoneId) = Instant.ofEpochMilli(t).atZone(zone).toLocalTime().toNanoOfDay() / 1_000_000L
 
     private fun splitByHour(seg: BasalSegment, tuned: AtProfile, zone: ZoneId, out: MutableList<Dose>) {

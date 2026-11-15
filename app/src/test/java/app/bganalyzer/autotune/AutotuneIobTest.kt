@@ -53,3 +53,19 @@ class AutotuneIobTest {
         assertEquals(0.0, curve.at(7 * 60 * minute).iob, 0.0)
     }
 }
+
+class ExtendedBolusTest {
+    private val minute = 60_000L
+
+    @Test fun anExtendedBolusIsSpreadInsideItsDuration() {
+        val doses = AutotuneDoses.extended(1_000_000L, 60 * minute, 3.0)
+        assertEquals(13, doses.size) // 60 / 5 + 1
+        assertEquals(3.0, doses.sumOf { it.units }, 1e-9)
+        assertTrue(doses.all { it.timeMs in 1_000_000L..(1_000_000L + 60 * minute) })
+        assertEquals(1_000_000L + (0.5 * 60 * minute / 13).toLong(), doses.first().timeMs)
+    }
+
+    @Test fun nothingForZeroDurationOrUnits() {
+        assertTrue(AutotuneDoses.extended(0, 0, 3.0).isEmpty()); assertTrue(AutotuneDoses.extended(0, minute, 0.0).isEmpty())
+    }
+}

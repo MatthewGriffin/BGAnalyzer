@@ -106,12 +106,14 @@ class MainActivity : ComponentActivity() {
                 } else if (tab == 1) {
                     val patternsState by patterns.state.collectAsState()
                     val autotuneState by autotune.state.collectAsState()
+                    val insulinPeak by autotune.peak.collectAsState()
                     Box(Modifier.padding(inner)) {
                         PatternsScreen(
                             patternsState, glucoseState.unit, syncState, glucose.hasConnection,
                             patterns::setDays, patterns::setBlockHours, onSync = { glucose.sync(patternsState.days) },
                             onExcludeDay = patterns::excludeDay, onRestoreDay = patterns::restoreDay,
                             autotuneState = autotuneState, onAutotune = autotune::run, onAutotuneClear = autotune::clear,
+                            insulinPeak = insulinPeak, onInsulinPeak = autotune::setPeak,
                         )
                     }
                 } else if (tab == 3) {
