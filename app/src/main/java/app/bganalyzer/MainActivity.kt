@@ -21,6 +21,7 @@ import app.bganalyzer.ui.BackupViewModel
 import app.bganalyzer.ui.GlucoseScreen
 import app.bganalyzer.ui.PatternsScreen
 import app.bganalyzer.ui.PatternsViewModel
+import app.bganalyzer.ui.AutotuneViewModel
 import app.bganalyzer.ui.GlucoseViewModel
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -43,6 +44,7 @@ class MainActivity : ComponentActivity() {
     private val glucose: GlucoseViewModel by viewModels()
     private val backup: BackupViewModel by viewModels()
     private val patterns: PatternsViewModel by viewModels()
+    private val autotune: AutotuneViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,11 +96,13 @@ class MainActivity : ComponentActivity() {
                     }
                 } else if (tab == 1) {
                     val patternsState by patterns.state.collectAsState()
+                    val autotuneState by autotune.state.collectAsState()
                     Box(Modifier.padding(inner)) {
                         PatternsScreen(
                             patternsState, glucoseState.unit, syncState, glucose.hasConnection,
                             patterns::setDays, patterns::setBlockHours, onSync = { glucose.sync(patternsState.days) },
                             onExcludeDay = patterns::excludeDay, onRestoreDay = patterns::restoreDay,
+                            autotuneState = autotuneState, onAutotune = autotune::run, onAutotuneClear = autotune::clear,
                         )
                     }
                 } else if (tab == 3) {

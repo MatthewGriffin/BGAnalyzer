@@ -4,7 +4,7 @@ import app.bganalyzer.data.ProfileEntity
 import org.bson.Document
 
 /** Insulin sensitivity (mg/dL per U) and carb ratio (g per U) schedules from an uploaded profile. */
-data class ProfileSettings(val isf: List<BasalStep>, val carbRatio: List<BasalStep>) {
+data class ProfileSettings(val isf: List<BasalStep>, val carbRatio: List<BasalStep>, val diaHours: Double? = null) {
     private fun at(steps: List<BasalStep>, hour: Int): Double? =
         if (steps.isEmpty()) null else (steps.lastOrNull { it.secondsFromMidnight <= hour * 3600 } ?: steps.last()).rateUph
 
@@ -19,7 +19,19 @@ data class ProfileSettings(val isf: List<BasalStep>, val carbRatio: List<BasalSt
             val starts = (steps.map { Math.floorMod(it.secondsFromMidnight + shiftHours * 3600, 86_400) } + 0).distinct().sorted()
             return starts.map { BasalStep(it, original(it) * 100.0 / percentage.coerceAtLeast(1)) }
         }
-        return ProfileSettings(f(isf), f(carbRatio))
+        return ProfileSettings(f(isf), f(carbRatio), diaHours)
+    }
+
+    /** Time-weighted average over the day, as AAPS autotune uses for its single ISF / carb ratio. Null with no schedule. */
+    fun averageIsfMgdl() = average(isf)
+    fun averageCarbRatio() = average(carbRatio)
+
+    private fun average(steps: List<BasalStep>): Double? {
+        if (steps.isEmpty()) return null
+        if (steps.size == 1) return steps[0].rateUph
+        var total = 0.0
+        for ((i, s) in steps.withIndex()) total += s.rateUph * ((steps.getOrNull(i + 1)?.secondsFromMidnight ?: 86_400) - s.secondsFromMidnight)
+        return Math.round(total / 86_400 * 100) / 100.0
     }
 
     fun isfMgdlAt(hour: Int) = at(isf, hour)
@@ -57,7 +69,7 @@ data class ProfileSettings(val isf: List<BasalStep>, val carbRatio: List<BasalSt
             var isf = steps("sens", factor)
             // Units missing: an ISF under 25 cannot be mg/dL per unit, so it is mmol/L (guards an 18x error).
             if (unit == null && isf.isNotEmpty() && isf.maxOf { it.rateUph } < 25) isf = isf.map { it.copy(rateUph = it.rateUph * GlucoseUnit.MMOLL_TO_MGDL) }
-            return ProfileSettings(isf, steps("carbratio", 1.0))
+            return ProfileSettings(isf, steps("carbratio", 1.0), (main["dia"] as? Number)?.toDouble()?.takeIf { it > 0 })
         }
     }
 }
