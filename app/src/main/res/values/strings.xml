@@ -142,4 +142,5 @@
     <string name="excluded_note_label">Note (optional, default: Pump failure)</string>
     <string name="excluded_button">Exclude this day</string>
     <string name="excluded_restore">Restore</string>
+    <string name="suggestions_syncing">Syncing this period first. The suggestions below update when it finishes.</string>
 </resources>

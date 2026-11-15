@@ -88,7 +88,7 @@ fun PatternsScreen(
                 Text(stringResource(R.string.patterns_no_data))
                 return@Column
             }
-            SuggestionsSection(state)
+            SuggestionsSection(state, sync is SyncState.Running)
             if (state.zoneName.isNotEmpty()) Text(stringResource(R.string.patterns_timezone, state.zoneName), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.patterns_glucose_title), style = MaterialTheme.typography.titleMedium)
             state.blocks.forEach { BlockCard(it, unit) }
@@ -230,12 +230,13 @@ private fun ProfileChangesCard(changes: List<app.bganalyzer.domain.EffectiveProf
 
 /** Advisory ideas only: the app never changes a setting. Each shows its evidence, and held-back ones say why. */
 @Composable
-private fun SuggestionsSection(state: PatternsState) {
+private fun SuggestionsSection(state: PatternsState, syncing: Boolean) {
     Text(stringResource(R.string.suggestions_title), style = MaterialTheme.typography.titleMedium)
     Text(stringResource(R.string.suggestions_intro), style = MaterialTheme.typography.bodySmall)
     if (state.emptyDays.isNotEmpty()) {
         Text(stringResource(R.string.suggestions_gaps, state.emptyDays.size), color = MaterialTheme.colorScheme.tertiary)
     }
+    if (syncing) Text(stringResource(R.string.suggestions_syncing), color = MaterialTheme.colorScheme.tertiary)
     val r = state.suggestions
     if (r.suggestions.isEmpty() && r.held.isEmpty()) Text(stringResource(R.string.suggestions_none))
     r.suggestions.forEach { s ->

@@ -71,7 +71,7 @@ class MainActivity : ComponentActivity() {
                             listOf(R.string.tab_glucose, R.string.tab_patterns, R.string.tab_connection, R.string.tab_backup).forEachIndexed { i, label ->
                                 NavigationBarItem(
                                     selected = tab == i,
-                                    onClick = { tab = i; if (i == 0) glucose.refreshWindow(); if (i == 1) patterns.refresh() },
+                                    onClick = { tab = i; if (i == 0) glucose.refreshWindow(); if (i == 1) { patterns.refresh(); glucose.syncIfStale(patterns.state.value.days) } },
                                     icon = {},
                                     label = { Text(stringResource(label)) },
                                     alwaysShowLabel = true,
