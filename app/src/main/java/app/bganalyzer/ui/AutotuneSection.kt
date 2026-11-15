@@ -86,7 +86,10 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
                 val change = if (h.current > 0) (h.suggested / h.current - 1) * 100 else 0.0
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(String.format(Locale.US, "%02d:00", h.hour))
-                    Text("${rate(h.current)} -> ${rate(h.suggested)} U/h (${String.format(Locale.getDefault(), "%+.0f", change)}%)  ${h.confidence.name.lowercase()}")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("${rate(h.current)} -> ${rate(h.suggested)} U/h (${String.format(Locale.getDefault(), "%+.0f", change)}%)")
+                        Text(h.confidence.name.lowercase(), color = confidenceColor(h.confidence), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    }
                 }
                 h.heldReason?.let { Text(stringResource(R.string.autotune_held, rate(h.tuned), it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             }
