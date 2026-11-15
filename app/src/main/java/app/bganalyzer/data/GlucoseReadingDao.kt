@@ -13,6 +13,9 @@ interface GlucoseReadingDao {
     @Query("SELECT COUNT(*) FROM glucose_readings")
     fun observeCount(): Flow<Int>
 
+    @Query("SELECT * FROM glucose_readings ORDER BY timestampMs")
+    suspend fun all(): List<GlucoseReadingEntity>
+
     @Query("SELECT MAX(timestampMs) FROM glucose_readings")
     suspend fun newestTimestamp(): Long?
 
