@@ -18,7 +18,7 @@
     <string name="glucose_title">Glucose</string>
     <string name="sync_button">Sync now</string>
     <string name="sync_running">Syncing… %1$d readings</string>
-    <string name="sync_done">Synced. %1$d readings checked.</string>
+    <string name="sync_done">Synced. Checked %1$d readings, %2$d treatments and %3$d profiles.</string>
     <string name="sync_failed">Sync failed</string>
     <string name="sync_no_connection">Set up the connection first.</string>
     <string name="sync_need_connection">Set up the Nightscout connection on the Connection tab, then sync.</string>

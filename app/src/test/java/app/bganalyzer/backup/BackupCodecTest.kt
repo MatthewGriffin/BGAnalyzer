@@ -80,5 +80,7 @@ class BackupCodecTest {
         assertEquals("mongodb+srv://fixture:secret@cluster0.example.net/nightscout", back.connectionUri)
         assertEquals("nightscout", back.connectionDatabase)
         assertEquals(listOf(GlucoseReadingEntity(1_790_000_000_000L, 117.0), GlucoseReadingEntity(1_790_000_300_000L, 121.0)), back.glucose)
+        // The v1 file predates treatments and profiles, so they read as empty.
+        assertEquals(emptyList<Any>(), back.treatments); assertEquals(emptyList<Any>(), back.profiles)
     }
 }

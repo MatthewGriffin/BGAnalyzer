@@ -32,6 +32,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    sourceSets {
+        // Lets the migration test open the exported schema files.
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
     buildFeatures {
         compose = true
     }
@@ -41,6 +45,17 @@ android {
             excludes += "META-INF/native-image/**"
         }
     }
+}
+
+// Room's migration test helper was built against kotlinx-serialization 1.8.x, but the build pins core to 1.7.3,
+// which makes it fail with AbstractMethodError. Use the matching version for the on-device test classpath only.
+configurations.matching { it.name.contains("AndroidTest") }.configureEach {
+    resolutionStrategy.force(
+        "org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1",
+        "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.8.1",
+        "org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1",
+        "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.8.1",
+    )
 }
 
 dependencies {
@@ -60,6 +75,7 @@ dependencies {
 
     testImplementation(libs.junit)
 
+    androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
 

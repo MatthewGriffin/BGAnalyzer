@@ -12,15 +12,20 @@ class AppBackupTest {
     private val pass = "correct horse"
     private fun reading(t: Long, v: Double = 100.0) = GlucoseReadingEntity(t, v)
 
-    private fun backupOf(dao: FakeDao, settings: FakeSettings): ByteArray = runBlocking {
-        ByteArrayOutputStream().also { AppBackup(dao, settings, nowMs = { 5L }).export(it, pass) }.toByteArray()
+    private fun backupOf(
+        dao: FakeDao,
+        settings: FakeSettings,
+        treatments: List<app.bganalyzer.data.TreatmentEntity> = emptyList(),
+        profiles: List<app.bganalyzer.data.ProfileEntity> = emptyList(),
+    ): ByteArray = runBlocking {
+        ByteArrayOutputStream().also { AppBackup(dao, FakeTreatmentDao(treatments), FakeProfileDao(profiles), settings, nowMs = { 5L }).export(it, pass) }.toByteArray()
     }
 
     @Test
     fun restoreIntoAnEmptyAppBringsEverythingBack() = runBlocking {
         val file = backupOf(FakeDao(listOf(reading(1), reading(2, 150.0))), FakeSettings("mongodb://u:p@h/db", "db"))
         val dao = FakeDao(); val settings = FakeSettings()
-        val result = AppBackup(dao, settings).restore(ByteArrayInputStream(file), pass)
+        val result = AppBackup(dao, FakeTreatmentDao(), FakeProfileDao(), settings).restore(ByteArrayInputStream(file), pass)
         assertEquals(RestoreResult(2, true), result)
         assertEquals(listOf(reading(1), reading(2, 150.0)), dao.all())
         assertEquals("mongodb://u:p@h/db", settings.uri); assertEquals("db", settings.database)
@@ -30,7 +35,7 @@ class AppBackupTest {
     fun restoreMergesAndNeverDeletesExistingReadings() = runBlocking {
         val file = backupOf(FakeDao(listOf(reading(1), reading(2))), FakeSettings("mongodb://h/db", "db"))
         val dao = FakeDao(listOf(reading(2, 999.0 - 800), reading(3)))
-        AppBackup(dao, FakeSettings()).restore(ByteArrayInputStream(file), pass)
+        AppBackup(dao, FakeTreatmentDao(), FakeProfileDao(), FakeSettings()).restore(ByteArrayInputStream(file), pass)
         assertEquals(listOf(1L, 2L, 3L), dao.all().map { it.timestampMs })
     }
 
@@ -38,9 +43,21 @@ class AppBackupTest {
     fun backupWithoutAConnectionLeavesTheWorkingOneAlone() = runBlocking {
         val file = backupOf(FakeDao(listOf(reading(1))), FakeSettings())
         val settings = FakeSettings("mongodb://keep:me@h/db", "db")
-        val result = AppBackup(FakeDao(), settings).restore(ByteArrayInputStream(file), pass)
+        val result = AppBackup(FakeDao(), FakeTreatmentDao(), FakeProfileDao(), settings).restore(ByteArrayInputStream(file), pass)
         assertEquals(false, result.connectionRestored)
         assertEquals("mongodb://keep:me@h/db", settings.uri); assertEquals("db", settings.database)
+    }
+
+    @Test
+    fun treatmentsAndProfilesRoundTripAndMergeByKey() = runBlocking {
+        val t = app.bganalyzer.data.TreatmentEntity("a1", 10, "Meal Bolus", 2.0, 30.0, false, null, null, null, true, 5L, "{\"x\":1}")
+        val p = app.bganalyzer.data.ProfileEntity("p1", 7, "main", "mmol", "Europe/London", "{}")
+        val file = backupOf(FakeDao(), FakeSettings(), listOf(t), listOf(p))
+        val tDao = FakeTreatmentDao(listOf(t.copy(id = "old", timestampMs = 1))); val pDao = FakeProfileDao()
+        val result = AppBackup(FakeDao(), tDao, pDao, FakeSettings()).restore(ByteArrayInputStream(file), pass)
+        assertEquals(1, result.treatments); assertEquals(1, result.profiles)
+        assertEquals(listOf("old", "a1"), tDao.all().map { it.id })
+        assertEquals(t, tDao.rows["a1"]); assertEquals(p, pDao.rows["p1"])
     }
 
     @Test
@@ -48,7 +65,7 @@ class AppBackupTest {
         val file = backupOf(FakeDao(listOf(reading(1))), FakeSettings("mongodb://new@h/db", "newdb"))
         val dao = FakeDao(listOf(reading(9))); val settings = FakeSettings("mongodb://old@h/db", "olddb")
         assertThrows(BackupException::class.java) {
-            runBlocking { AppBackup(dao, settings).restore(ByteArrayInputStream(file), "not the passphrase") }
+            runBlocking { AppBackup(dao, FakeTreatmentDao(), FakeProfileDao(), settings).restore(ByteArrayInputStream(file), "not the passphrase") }
         }
         assertEquals(listOf(9L), runBlocking { dao.all() }.map { it.timestampMs })
         assertEquals("mongodb://old@h/db", settings.uri); assertEquals("olddb", settings.database)

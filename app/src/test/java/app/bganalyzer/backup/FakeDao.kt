@@ -17,4 +17,21 @@ class FakeDao(initial: List<GlucoseReadingEntity> = emptyList()) : GlucoseReadin
     override fun observeSince(fromMs: Long): Flow<List<GlucoseReadingEntity>> = flowOf(rows.values.filter { it.timestampMs >= fromMs })
 }
 
+class FakeTreatmentDao(initial: List<app.bganalyzer.data.TreatmentEntity> = emptyList()) : app.bganalyzer.data.TreatmentDao {
+    val rows = initial.associateBy { it.id }.toMutableMap()
+    override suspend fun upsertAll(treatments: List<app.bganalyzer.data.TreatmentEntity>) { treatments.forEach { rows[it.id] = it } }
+    override suspend fun all() = rows.values.sortedBy { it.timestampMs }
+    override fun observeCount(): Flow<Int> = flowOf(rows.size)
+    override suspend fun newestTimestamp() = rows.values.maxOfOrNull { it.timestampMs }
+    override suspend fun newestServerModified() = rows.values.mapNotNull { it.srvModifiedMs }.maxOrNull()
+    override suspend fun validBetween(fromMs: Long, toMs: Long) = all().filter { it.valid && it.timestampMs in fromMs until toMs }
+}
+
+class FakeProfileDao(initial: List<app.bganalyzer.data.ProfileEntity> = emptyList()) : app.bganalyzer.data.ProfileDao {
+    val rows = initial.associateBy { it.id }.toMutableMap()
+    override suspend fun upsertAll(profiles: List<app.bganalyzer.data.ProfileEntity>) { profiles.forEach { rows[it.id] = it } }
+    override suspend fun all() = rows.values.sortedBy { it.startMs }
+    override suspend fun latest() = rows.values.maxByOrNull { it.startMs }
+}
+
 class FakeSettings(override var uri: String = "", override var database: String = "") : ConnectionSettings
