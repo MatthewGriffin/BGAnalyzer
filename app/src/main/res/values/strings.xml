@@ -59,7 +59,6 @@
     <string name="treat_insulin">Bolus insulin %1$s U in total, %2$s U per day (includes automatic micro-boluses, not basal)</string>
     <string name="tab_patterns">Patterns</string>
     <string name="patterns_title">Patterns</string>
-    <string name="patterns_intro">How glucose behaves at different times of day. This describes what happened; it does not suggest changes to your settings.</string>
     <string name="patterns_block_label">Block size</string>
     <string name="patterns_block_hours">%1$d hours</string>
     <string name="patterns_timezone">Times are in %1$s.</string>

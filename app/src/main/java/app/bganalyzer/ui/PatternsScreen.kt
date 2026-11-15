@@ -48,7 +48,6 @@ fun PatternsScreen(
     onExcludeDays: (List<String>, String) -> Unit = { _, _ -> },
 ) {
     ScreenScaffold(stringResource(R.string.patterns_title)) {
-            Text(stringResource(R.string.patterns_intro))
             if (state.unsyncedMs > 60 * 60 * 1000L && sync !is SyncState.Running) {
                 Text(stringResource(R.string.sync_unsynced_notice), color = MaterialTheme.colorScheme.tertiary)
             }
