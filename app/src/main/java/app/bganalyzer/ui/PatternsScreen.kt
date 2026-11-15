@@ -48,6 +48,8 @@ fun PatternsScreen(
     autotuneState: AutotuneState = AutotuneState.Idle,
     onAutotune: (Int) -> Unit = {},
     onAutotuneClear: () -> Unit = {},
+    insulinPeak: Int = 75,
+    onInsulinPeak: (Int) -> Unit = {},
 ) {
     Scaffold(contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0), topBar = { TopAppBar(title = { Text(stringResource(R.string.patterns_title)) }) }) { padding ->
         Column(
@@ -100,7 +102,7 @@ fun PatternsScreen(
             Text(stringResource(R.string.patterns_meals_title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(R.string.patterns_meals_intro), style = MaterialTheme.typography.bodySmall)
             state.meals.forEach { MealCard(it, unit) }
-            AutotuneSection(autotuneState, unit, hasConnection, onAutotune, onAutotuneClear)
+            AutotuneSection(autotuneState, unit, insulinPeak, onInsulinPeak, onAutotune, onAutotuneClear)
         }
     }
 }
