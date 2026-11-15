@@ -54,10 +54,6 @@
     <string name="treat_none">No treatments in this period. Sync to load them.</string>
     <string name="treat_meals">%1$d meals, %2$s g carbs per day on average</string>
     <string name="treat_insulin">Bolus insulin %1$s U in total, %2$s U per day (includes automatic micro-boluses, not basal)</string>
-    <string name="treat_recent">Most recent</string>
-    <string name="treat_carbs">%1$s g carbs</string>
-    <string name="treat_units">%1$s U</string>
-    <string name="treat_smb">%1$s U (auto)</string>
     <string name="tab_patterns">Patterns</string>
     <string name="patterns_title">Patterns</string>
     <string name="patterns_intro">How glucose behaves at different times of day. This describes what happened; it does not suggest changes to your settings.</string>
