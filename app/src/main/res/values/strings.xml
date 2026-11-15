@@ -129,7 +129,7 @@
     <string name="profile_changes_none">No profile switches in this period. The comparison uses the profile in force when the period began.</string>
     <string name="profile_changes_more">%1$d earlier switches not shown.</string>
     <string name="excluded_title">Days excluded from analysis</string>
-    <string name="excluded_intro">Mark a day as bad data, for example when a pump failed and you used insulin pens. Excluded days are left out of the patterns and basal comparison on this tab and out of Autotune, and they are kept in your backup.</string>
+    <string name="excluded_intro">Mark a day as bad data, for example when a pump failed and you used insulin pens. Excluded days are left out of Autotune and of the Patterns tab, and they are kept in your backup.</string>
     <string name="excluded_day_label">Day to exclude</string>
     <string name="excluded_note_label">Note (optional, default: Pump failure)</string>
     <string name="excluded_button">Exclude this day</string>
@@ -175,7 +175,7 @@
     <string name="autotune_insulin_ultra">Ultra-rapid, peak 55 min (Fiasp)</string>
     <string name="autotune_insulin_lyumjev">Lyumjev, peak 45 min</string>
     <string name="no_insulin_title">%1$d days have glucose but no insulin records</string>
-    <string name="no_insulin_intro">No boluses and no loop temp basals were recorded on these days, so the pump was probably off or had failed and insulin went unrecorded (for example pens). Their glucose says nothing about basal or sensitivity. Autotune already skips them; excluding them also removes them from the patterns here.</string>
+    <string name="no_insulin_intro">No boluses and no loop temp basals were recorded on these days, so the pump was probably off or had failed and insulin went unrecorded (for example pens). Their glucose says nothing about basal or sensitivity. Autotune already skips them; excluding them also removes them from the Patterns tab.</string>
     <string name="no_insulin_button">Exclude these days</string>
     <string name="autotune_evidence">Based on %1$d meals and %2$d insulin-only readings.</string>
     <string name="autotune_evidence_low">That is little data: treat the carb ratio and sensitivity as low confidence.</string>

@@ -47,6 +47,10 @@ fun AutotuneScreen(
     onPeak: (Int) -> Unit,
     onRun: (Int) -> Unit,
     onClear: () -> Unit,
+    dayQuality: DayQualityState,
+    onExcludeDay: (String, String) -> Unit,
+    onRestoreDay: (String) -> Unit,
+    onExcludeDays: (List<String>, String) -> Unit,
 ) {
     ScreenScaffold(stringResource(R.string.autotune_title)) {
             if (sync is SyncState.Running) Text(stringResource(R.string.autotune_syncing), color = MaterialTheme.colorScheme.tertiary)
@@ -71,6 +75,8 @@ fun AutotuneScreen(
                 is AutotuneState.Failed -> Text(state.message, color = MaterialTheme.colorScheme.error)
                 is AutotuneState.Done -> AutotuneResultCards(state, unit, onClear)
             }
+            // data quality last: the advice above is what this tab is for
+            ExcludedDaysCards(days, dayQuality.excluded, dayQuality.noInsulinDays, onExcludeDay, onRestoreDay, onExcludeDays)
         }
 }
 

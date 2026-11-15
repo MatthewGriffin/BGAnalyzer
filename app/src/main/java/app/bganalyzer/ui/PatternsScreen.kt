@@ -43,9 +43,6 @@ fun PatternsScreen(
     onDays: (Int) -> Unit,
     onBlockHours: (Int) -> Unit,
     onSync: () -> Unit,
-    onExcludeDay: (String, String) -> Unit = { _, _ -> },
-    onRestoreDay: (String) -> Unit = {},
-    onExcludeDays: (List<String>, String) -> Unit = { _, _ -> },
 ) {
     ScreenScaffold(stringResource(R.string.patterns_title)) {
             if (state.unsyncedMs > 60 * 60 * 1000L && sync !is SyncState.Running) {
@@ -78,22 +75,8 @@ fun PatternsScreen(
                     modifier = Modifier.weight(1f),
                 )
             }
-            if (state.noInsulinDays.isNotEmpty()) {
-                val noInsulinNote = stringResource(R.string.no_insulin_note)
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(R.string.no_insulin_title, state.noInsulinDays.size), style = MaterialTheme.typography.titleSmall)
-                        Text(stringResource(R.string.no_insulin_intro), style = MaterialTheme.typography.bodySmall)
-                        Text(state.noInsulinDays.joinToString(", "), style = MaterialTheme.typography.bodySmall)
-                        androidx.compose.material3.Button(onClick = { onExcludeDays(state.noInsulinDays, noInsulinNote) }) {
-                            Text(stringResource(R.string.no_insulin_button))
-                        }
-                    }
-                }
-            }
             if (state.loaded && state.readingCount == 0) {
                 EmptyDaysNotice(state.emptyDays)
-                ExcludedDaysSection(state, onExcludeDay, onRestoreDay)
                 Text(stringResource(R.string.patterns_no_data))
                 return@ScreenScaffold
             }
@@ -108,7 +91,6 @@ fun PatternsScreen(
             state.meals.forEach { MealCard(it, unit) }
             // data quality last: the trends above are what this tab is for
             EmptyDaysNotice(state.emptyDays)
-            ExcludedDaysSection(state, onExcludeDay, onRestoreDay)
         }
 }
 
@@ -240,45 +222,6 @@ private fun ProfileChangesCard(changes: List<app.bganalyzer.domain.EffectiveProf
     }
 }
 
-
-/** Mark days as bad data, e.g. a pump failure with insulin pens in use. Excluded days are left out of every analysis here. */
-@Composable
-private fun ExcludedDaysSection(state: PatternsState, onExclude: (String, String) -> Unit, onRestore: (String) -> Unit) {
-    val already = state.excludedDays.map { it.date }.toSet()
-    val candidates = (0 until state.days).map { java.time.LocalDate.now().minusDays(it.toLong()).toString() }.filter { it !in already }
-    var picked by androidx.compose.runtime.remember(candidates.firstOrNull()) { androidx.compose.runtime.mutableStateOf(candidates.firstOrNull()) }
-    var note by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    val defaultNote = stringResource(R.string.excluded_default_note)
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.excluded_title), style = MaterialTheme.typography.titleSmall)
-            Text(stringResource(R.string.excluded_intro), style = MaterialTheme.typography.bodySmall)
-            if (candidates.isNotEmpty()) {
-                Dropdown(
-                    label = stringResource(R.string.excluded_day_label),
-                    options = candidates,
-                    selected = picked ?: candidates.first(),
-                    text = { it },
-                    onSelect = { picked = it },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                androidx.compose.material3.OutlinedTextField(
-                    value = note, onValueChange = { note = it.take(80) }, singleLine = true,
-                    label = { Text(stringResource(R.string.excluded_note_label)) }, modifier = Modifier.fillMaxWidth(),
-                )
-                androidx.compose.material3.Button(onClick = { onExclude(picked ?: candidates.first(), note.ifBlank { defaultNote }); note = "" }) {
-                    Text(stringResource(R.string.excluded_button))
-                }
-            }
-            state.excludedDays.forEach { d ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Text("${d.date}  ${d.note}", Modifier.weight(1f))
-                    androidx.compose.material3.TextButton(onClick = { onRestore(d.date) }) { Text(stringResource(R.string.excluded_restore)) }
-                }
-            }
-        }
-    }
-}
 
 /** What glucose did in the days before and after each profile change. Shows what happened, not why. */
 @Composable

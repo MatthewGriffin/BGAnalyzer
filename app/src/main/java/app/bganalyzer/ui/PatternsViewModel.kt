@@ -4,9 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.bganalyzer.data.AppDatabase
-import app.bganalyzer.data.ExcludedDayEntity
 import app.bganalyzer.domain.ChangeComparison
-import app.bganalyzer.domain.DayQuality
 import app.bganalyzer.domain.ChangeResult
 import app.bganalyzer.domain.ExcludedDays
 import app.bganalyzer.domain.BasalComparison
@@ -34,7 +32,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import java.time.ZoneId
 
 data class PatternsState(
@@ -54,10 +51,6 @@ data class PatternsState(
     val emptyDays: List<EmptyRange> = emptyList(),
     /** Profile switches in the period, oldest first. */
     val profileChanges: List<EffectiveProfile> = emptyList(),
-    /** Days the user marked as bad data, newest first. They are left out of everything on this tab. */
-    val excludedDays: List<ExcludedDayEntity> = emptyList(),
-    /** Days with glucose but no insulin records at all (pump off or failed, pens): candidates to exclude. */
-    val noInsulinDays: List<String> = emptyList(),
     /** Glucose before and after each profile change in the period, newest first. */
     val changes: List<ChangeResult> = emptyList(),
     /** Glucose before and after each site, insulin or sensor change in the period, newest first. */
@@ -97,8 +90,6 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                             mealStats,
                             unsyncedMs = SyncPlanner.unsyncedMs(coverage.map { it.source to Span(it.startMs, it.endMs) }, Span(from, to)),
                             basal = basalStats,
-                            excludedDays = excluded,
-                            noInsulinDays = DayQuality.daysWithoutInsulin(allTreatments, allReadings.map { it.timestampMs }, zone, from, to, to).filter { it !in excludedDates },
                             changes = ChangeComparison.compare(
                                 windowReadings,
                                 resolver.changes(0L, to), from, to,
@@ -122,19 +113,6 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
         }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PatternsState())
-
-    fun excludeDay(date: String, note: String) {
-        viewModelScope.launch(Dispatchers.IO) { db.excludedDayDao().upsertAll(listOf(ExcludedDayEntity(date, note.trim(), System.currentTimeMillis()))) }
-    }
-
-    fun excludeDays(dates: List<String>, note: String) {
-        val now = System.currentTimeMillis()
-        viewModelScope.launch(Dispatchers.IO) { db.excludedDayDao().upsertAll(dates.map { ExcludedDayEntity(it, note, now) }) }
-    }
-
-    fun restoreDay(date: String) {
-        viewModelScope.launch(Dispatchers.IO) { db.excludedDayDao().delete(date) }
-    }
 
     fun setDays(value: Int) = days.update { value }
     fun setBlockHours(value: Int) = blockHours.update { value }
