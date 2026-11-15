@@ -16,13 +16,13 @@ internal object AtRound {
 /** One categorised glucose reading. Times are epoch milliseconds, glucose in mg/dL. */
 data class BgDatum(
     val date: Long,
-    val glucose: Double = 0.0,
-    val avgDelta: Double = 0.0,
-    val bgi: Double = 0.0,
-    val deviation: Double = 0.0,
+    var glucose: Double = 0.0,
+    var avgDelta: Double = 0.0,
+    var bgi: Double = 0.0,
+    var deviation: Double = 0.0,
     /** "start" or "end" for the first and last reading of a meal absorption, otherwise empty. */
-    val mealAbsorption: String = "",
-    val mealCarbs: Int = 0,
+    var mealAbsorption: String = "",
+    var mealCarbs: Int = 0,
 )
 
 /** One meal for the carb-ratio calculation. */
