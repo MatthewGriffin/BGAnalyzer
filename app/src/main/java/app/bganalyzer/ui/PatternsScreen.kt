@@ -241,6 +241,7 @@ private fun SuggestionsSection(state: PatternsState) {
                 val change = stringResource(if (s.moreInsulin) R.string.suggestions_more else R.string.suggestions_less, s.changePct)
                 Text(if (s.fromUph != null && s.toUph != null) "$change (${rate(s.fromUph)} -> ${rate(s.toUph)} U/h)" else change)
                 Text(stringResource(R.string.suggestions_confidence, s.confidence.name.lowercase().replaceFirstChar { it.uppercase() }), style = MaterialTheme.typography.bodySmall)
+                s.detail?.let { Text(it) }
                 s.evidence.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
         }
