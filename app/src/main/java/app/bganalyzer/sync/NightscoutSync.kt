@@ -4,13 +4,7 @@ import androidx.room.withTransaction
 import app.bganalyzer.data.AppDatabase
 import app.bganalyzer.data.CoverageEntity
 import app.bganalyzer.mongo.NightscoutMongo
-import com.mongodb.client.FindIterable
-import com.mongodb.client.MongoDatabase
-import com.mongodb.client.model.Filters
-import com.mongodb.client.model.Projections
-import com.mongodb.client.model.Sorts
 import org.bson.Document
-import org.bson.conversions.Bson
 
 /** What a sync asked for and read. [spans] is how many separate stretches of time were requested. */
 data class SyncResult(
@@ -31,26 +25,25 @@ class NightscoutSync(private val db: AppDatabase, private val nowMs: () -> Long 
         const val GLUCOSE = Sources.GLUCOSE
         const val TREATMENTS = Sources.TREATMENTS
         const val IOB = Sources.IOB
-        /** With nothing stored, take the newest profiles; they are few and small. */
-        const val MAX_FIRST_PROFILES = 300
     }
 
     /** Blocks, so call it off the main thread. [days] is the period to make complete. [onProgress] gets the running number of stored records. */
-    suspend fun run(uri: String, database: String, days: Int, onProgress: (Int) -> Unit = {}): SyncResult {
+    suspend fun run(uri: String, database: String, days: Int, onProgress: (Int) -> Unit = {}): SyncResult =
+        MongoSyncSource(NightscoutMongo.open(uri), database).use { run(it, days, onProgress) }
+
+    /** The same sync from any [source] (MongoDB or the REST API). The source is not closed here. */
+    suspend fun run(source: SyncSource, days: Int, onProgress: (Int) -> Unit = {}): SyncResult {
         val now = nowMs()
         val period = SyncPlanner.period(now, days)
         Sources.LEGACY.forEach { db.coverageDao().clear(it) }
         seedGlucoseCoverage()
-        return NightscoutMongo.open(uri).use { client ->
-            val mongo = client.getDatabase(database)
-            var stored = 0
-            val progress = { n: Int -> stored += n; onProgress(stored) }
-            val glucose = glucose(mongo, period, now, progress)
-            val treatments = treatments(mongo, period, now, progress)
-            val iob = iob(mongo, period, now, progress)
-            val profiles = profiles(mongo)
-            SyncResult(glucose.fetched, treatments.fetched, profiles, iob.fetched, glucose.spans + treatments.spans + iob.spans)
-        }
+        var stored = 0
+        val progress = { n: Int -> stored += n; onProgress(stored) }
+        val glucose = glucose(source, period, now, progress)
+        val treatments = treatments(source, period, now, progress)
+        val iob = iob(source, period, now, progress)
+        val profiles = profiles(source)
+        return SyncResult(glucose.fetched, treatments.fetched, profiles, iob.fetched, glucose.spans + treatments.spans + iob.spans)
     }
 
     private class Part(val fetched: Int, val spans: Int)
@@ -66,37 +59,31 @@ class NightscoutSync(private val db: AppDatabase, private val nowMs: () -> Long 
         replaceCoverage(GLUCOSE, SyncPlanner.coverageFromRuns(stamps, SyncPlanner.GLUCOSE_GAP_MS))
     }
 
-    private suspend fun glucose(mongo: MongoDatabase, period: Span, now: Long, progress: (Int) -> Unit): Part {
+    private suspend fun glucose(source: SyncSource, period: Span, now: Long, progress: (Int) -> Unit): Part {
         val dao = db.glucoseReadingDao()
         val covered = db.coverageDao().forSource(GLUCOSE).map { Span(it.startMs, it.endMs) }
         val holes = SyncPlanner.recentGaps(dao.timestampsSince(period.startMs), period, now, SyncPlanner.GLUCOSE_GAP_MS)
         val spans = SyncPlanner.spans(period, covered, holes, SyncPlanner.GLUCOSE_TAIL_MS, now)
         var fetched = 0
         for (chunk in SyncPlanner.chunks(spans)) {
-            val filter = Filters.and(Filters.exists("sgv"), Filters.or(chunk.map { Filters.and(Filters.gt("date", it.startMs), Filters.lte("date", it.endMs)) }))
-            fetched += batched(
-                mongo.getCollection("entries").find(filter).projection(Projections.include("sgv", "date", "type")),
-                GlucoseEntryMapper::fromDocument, { dao.upsertAll(it) }, progress,
-            )
+            fetched += batched(source.glucose(chunk), GlucoseEntryMapper::fromDocument, { dao.upsertAll(it) }, progress)
             markCovered(GLUCOSE, chunk)
         }
         return Part(fetched, spans.size)
     }
 
-    private suspend fun treatments(mongo: MongoDatabase, period: Span, now: Long, progress: (Int) -> Unit): Part {
+    private suspend fun treatments(source: SyncSource, period: Span, now: Long, progress: (Int) -> Unit): Part {
         val dao = db.treatmentDao()
         val covered = db.coverageDao().forSource(TREATMENTS).map { Span(it.startMs, it.endMs) }
         val spans = SyncPlanner.spans(period, covered, emptyList(), SyncPlanner.TREATMENT_TAIL_MS, now)
         // Also pick up records edited or invalidated since the last sync (newer records carry srvModified).
-        val edited: Bson? = dao.newestServerModified()?.let { Filters.gt("srvModified", it) }
+        val edited: Long? = dao.newestServerModified()
         var fetched = 0
         for ((i, chunk) in SyncPlanner.chunks(spans).withIndex()) {
-            val ranges = eventTimeRanges(chunk)
-            val filter = if (i == 0 && edited != null) Filters.or(ranges + edited) else Filters.or(ranges)
-            fetched += batched(mongo.getCollection("treatments").find(filter), TreatmentMapper::treatment, { dao.upsertAll(it) }, progress)
+            fetched += batched(source.treatments(chunk, if (i == 0) edited else null), TreatmentMapper::treatment, { dao.upsertAll(it) }, progress)
             markCovered(TREATMENTS, chunk)
         }
-        fetched += profileInForceAtStart(mongo, period)
+        fetched += profileInForceAtStart(source, period)
         return Part(fetched, spans.size)
     }
 
@@ -104,60 +91,30 @@ class NightscoutSync(private val db: AppDatabase, private val nowMs: () -> Long 
      * The profile active at the start of the period was set by a switch before it, which the period's own requests
      * do not reach. If none is stored from before the period, ask for the latest switch and its effective records.
      */
-    private suspend fun profileInForceAtStart(mongo: MongoDatabase, period: Span): Int {
+    private suspend fun profileInForceAtStart(source: SyncSource, period: Span): Int {
         val dao = db.treatmentDao()
         if (dao.profileEvents().any { it.timestampMs <= period.startMs }) return 0
-        val filter = Filters.and(
-            Filters.lte("date", period.startMs),
-            Filters.or(Filters.eq("eventType", "Profile Switch"), Filters.and(Filters.eq("eventType", "Note"), Filters.exists("profileJson"))),
-        )
-        return batched(
-            mongo.getCollection("treatments").find(filter).sort(Sorts.descending("date")).limit(6),
-            TreatmentMapper::treatment, { dao.upsertAll(it) }, {},
-        )
+        return batched(source.profileEventsBefore(period.startMs), TreatmentMapper::treatment, { dao.upsertAll(it) }, {})
     }
 
-    private suspend fun iob(mongo: MongoDatabase, period: Span, now: Long, progress: (Int) -> Unit): Part {
+    private suspend fun iob(source: SyncSource, period: Span, now: Long, progress: (Int) -> Unit): Part {
         val dao = db.iobDao()
         val covered = db.coverageDao().forSource(IOB).map { Span(it.startMs, it.endMs) }
         val holes = SyncPlanner.recentGaps(dao.timestampsSince(period.startMs), period, now, SyncPlanner.IOB_GAP_MS)
         val spans = SyncPlanner.spans(period, covered, holes, SyncPlanner.IOB_TAIL_MS, now)
         var fetched = 0
         for (chunk in SyncPlanner.chunks(spans)) {
-            val ranges = eventTimeRanges(chunk)
-            // Only loop records carry IOB; uploader and pump status records are about half of the collection.
-            val filter = Filters.and(Filters.exists("openaps.iob"), Filters.or(ranges))
-            fetched += batched(
-                mongo.getCollection("devicestatus").find(filter).projection(
-                    Projections.include("created_at", "openaps.iob.iob", "openaps.iob.basaliob", "openaps.iob.activity", "openaps.iob.time", "openaps.suggested.COB"),
-                ),
-                IobMapper::fromDocument, { dao.upsertAll(it) }, progress,
-            )
+            fetched += batched(source.iob(chunk), IobMapper::fromDocument, { dao.upsertAll(it) }, progress)
             markCovered(IOB, chunk)
         }
         return Part(fetched, spans.size)
     }
 
-    /**
-     * A record belongs to a span if either its `created_at` text or its numeric `date` falls in it. Normally they are the
-     * same moment, but a record uploaded late can carry the upload time in one and the event time in the other, and asking
-     * only by `created_at` would miss it.
-     */
-    private fun eventTimeRanges(spans: List<Span>): List<Bson> = spans.flatMap {
-        listOf(
-            Filters.and(Filters.gt("created_at", SyncPlanner.iso(it.startMs)), Filters.lte("created_at", SyncPlanner.iso(it.endMs))),
-            Filters.and(Filters.gt("date", it.startMs), Filters.lte("date", it.endMs)),
-        )
-    }
-
     /** Profiles are few and rarely change: with some stored, ask only for newer ones (a day of overlap). */
-    private suspend fun profiles(mongo: MongoDatabase): Int {
+    private suspend fun profiles(source: SyncSource): Int {
         val dao = db.profileDao()
         val newest = dao.latest()?.startMs
-        val collection = mongo.getCollection("profile")
-        val find = if (newest == null) collection.find().sort(Sorts.descending("created_at")).limit(MAX_FIRST_PROFILES)
-        else collection.find(Filters.gt("created_at", SyncPlanner.iso(newest - SyncPlanner.DAY_MS)))
-        return batched(find, TreatmentMapper::profile, { dao.upsertAll(it) }, {})
+        return batched(source.profiles(newest), TreatmentMapper::profile, { dao.upsertAll(it) }, {})
     }
 
     /** Records that a stretch has been fully requested. Called only after its records are stored, so an interrupted sync never claims coverage it does not have. */
@@ -173,14 +130,14 @@ class NightscoutSync(private val db: AppDatabase, private val nowMs: () -> Long 
 
     /** Reads a cursor in batches, maps each document, and stores each batch. Returns how many documents were read. */
     private suspend fun <T> batched(
-        find: FindIterable<Document>,
+        find: DocCursor,
         map: (Document) -> T?,
         store: suspend (List<T>) -> Unit,
         stored: (Int) -> Unit,
     ): Int {
         var fetched = 0
         val batch = ArrayList<T>(BATCH)
-        find.batchSize(BATCH).iterator().use { cursor ->
+        find.use { cursor ->
             while (cursor.hasNext()) {
                 fetched++
                 map(cursor.next())?.let(batch::add)

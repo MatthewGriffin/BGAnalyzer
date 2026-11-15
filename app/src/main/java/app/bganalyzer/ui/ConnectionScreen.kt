@@ -26,6 +26,20 @@ import app.bganalyzer.mongo.ConnectionReport
 import java.text.DateFormat
 import java.util.Date
 
+/** The Nightscout REST source's fields and callbacks. [source] is `mongo` or `rest`. */
+data class RestUi(
+    val source: String = "mongo",
+    val url: String = "",
+    /** `none`, `token` or `secret`. */
+    val auth: String = "none",
+    val secret: String = "",
+    val onSource: (String) -> Unit = {},
+    val onUrl: (String) -> Unit = {},
+    val onAuth: (String) -> Unit = {},
+    val onSecret: (String) -> Unit = {},
+    val onTest: () -> Unit = {},
+)
+
 sealed interface TestState {
     data object Idle : TestState
     data object Running : TestState
@@ -43,6 +57,7 @@ fun ConnectionScreen(
     onUriChange: (String) -> Unit,
     onDatabaseChange: (String) -> Unit,
     onTest: () -> Unit,
+    rest: RestUi = RestUi(),
 ) {
     Scaffold(contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0), topBar = { TopAppBar(title = { Text(stringResource(R.string.connection_title)) }) }) { padding ->
         Column(
@@ -50,6 +65,46 @@ fun ConnectionScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(stringResource(R.string.connection_intro))
+            Dropdown(
+                label = stringResource(R.string.source_label),
+                options = listOf("mongo", "rest"),
+                selected = rest.source,
+                text = { stringResource(if (it == "rest") R.string.source_rest else R.string.source_mongo) },
+                onSelect = rest.onSource,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (rest.source == "rest") {
+                Text(stringResource(R.string.rest_intro), style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = rest.url, onValueChange = rest.onUrl,
+                    label = { Text(stringResource(R.string.rest_url_label)) },
+                    placeholder = { Text(stringResource(R.string.rest_url_placeholder)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Dropdown(
+                    label = stringResource(R.string.rest_auth_label),
+                    options = listOf("none", "token", "secret"),
+                    selected = rest.auth,
+                    text = { stringResource(when (it) { "token" -> R.string.rest_auth_token; "secret" -> R.string.rest_auth_secret; else -> R.string.rest_auth_none }) },
+                    onSelect = rest.onAuth,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (rest.auth != "none") {
+                    OutlinedTextField(
+                        value = rest.secret, onValueChange = rest.onSecret,
+                        label = { Text(stringResource(if (rest.auth == "token") R.string.rest_token_label else R.string.rest_secret_label)) },
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Button(onClick = rest.onTest, enabled = testState != TestState.Running && rest.url.isNotBlank() && (rest.auth == "none" || rest.secret.isNotBlank())) {
+                    Text(stringResource(if (testState == TestState.Running) R.string.connection_testing else R.string.connection_test_button))
+                }
+            } else {
             OutlinedTextField(
                 value = uri,
                 onValueChange = onUriChange,
@@ -72,6 +127,7 @@ fun ConnectionScreen(
                 enabled = testState != TestState.Running && uri.isNotBlank() && database.isNotBlank(),
             ) {
                 Text(stringResource(if (testState == TestState.Running) R.string.connection_testing else R.string.connection_test_button))
+            }
             }
             when (testState) {
                 is TestState.Ok -> {

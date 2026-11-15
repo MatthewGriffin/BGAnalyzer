@@ -33,7 +33,11 @@ data class BackupData(
     val iob: List<IobSampleEntity> = emptyList(),
     /** Days the user marked as bad data (added later; older files have none). */
     val excludedDays: List<app.bganalyzer.data.ExcludedDayEntity> = emptyList(),
+    /** Nightscout REST settings (added later; older files have none). The secret is only ever stored inside the encrypted file. */
+    val rest: RestBackup? = null,
 )
+
+data class RestBackup(val source: String, val url: String, val authType: String, val secret: String)
 
 class BackupException(val reason: Reason, message: String) : Exception(message) {
     enum class Reason { NOT_A_BACKUP, WRONG_PASSPHRASE_OR_DAMAGED, NEWER_VERSION, DAMAGED }
@@ -68,6 +72,7 @@ object BackupCodec {
             .append("treatments", data.treatments.map(::treatmentDoc))
             .append("profiles", data.profiles.map(::profileDoc))
             .append("iob", data.iob.map(::iobDoc))
+            .append("rest", data.rest?.let { Document("source", it.source).append("url", it.url).append("auth", it.authType).append("secret", it.secret) })
             .append("excludedDays", data.excludedDays.map { Document("date", it.date).append("note", it.note).append("created", it.createdMs) })
         val salt = ByteArray(16).also(SecureRandom()::nextBytes)
         val iv = ByteArray(12).also(SecureRandom()::nextBytes)
@@ -134,6 +139,10 @@ object BackupCodec {
             treatments = (payload["treatments"] as? List<*>).orEmpty().mapNotNull { (it as? Document)?.let(::treatmentFrom) },
             profiles = (payload["profiles"] as? List<*>).orEmpty().mapNotNull { (it as? Document)?.let(::profileFrom) },
             iob = (payload["iob"] as? List<*>).orEmpty().mapNotNull { (it as? Document)?.let(::iobFrom) },
+            rest = (payload["rest"] as? Document)?.let { d ->
+                val url = (d["url"] as? String)?.takeIf { it.isNotBlank() } ?: return@let null
+                RestBackup(d["source"] as? String ?: "mongo", url, d["auth"] as? String ?: "none", d["secret"] as? String ?: "")
+            },
             excludedDays = (payload["excludedDays"] as? List<*>).orEmpty().mapNotNull { row ->
                 val d = row as? Document ?: return@mapNotNull null
                 val date = (d["date"] as? String)?.takeIf { runCatching { java.time.LocalDate.parse(it) }.isSuccess } ?: return@mapNotNull null

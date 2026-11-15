@@ -24,10 +24,12 @@ class AppBackup(
     private val settings: ConnectionSettings,
     private val nowMs: () -> Long = System::currentTimeMillis,
     private val excludedDayDao: app.bganalyzer.data.ExcludedDayDao? = null,
+    private val restSettings: app.bganalyzer.settings.RestSettings? = null,
 ) {
     suspend fun export(out: OutputStream, passphrase: String): Int {
         val readings = dao.all()
-        val data = BackupData(nowMs(), settings.uri.ifBlank { null }, settings.database.ifBlank { null }, readings, treatmentDao.all(), profileDao.all(), iobDao.all(), excludedDayDao?.all().orEmpty())
+        val data = BackupData(nowMs(), settings.uri.ifBlank { null }, settings.database.ifBlank { null }, readings, treatmentDao.all(), profileDao.all(), iobDao.all(), excludedDayDao?.all().orEmpty(),
+            restSettings?.takeIf { it.url.isNotBlank() }?.let { RestBackup(it.source, it.url, it.authType, it.secret) })
         out.write(BackupCodec.encode(data, passphrase))
         out.flush()
         return readings.size
@@ -45,6 +47,8 @@ class AppBackup(
         data.profiles.chunked(1000).forEach { profileDao.upsertAll(it) }
         data.iob.chunked(1000).forEach { iobDao.upsertAll(it) }
         excludedDayDao?.upsertAll(data.excludedDays)
+        // Like the MongoDB connection: replaced only when the backup has one, so a restore cannot blank a working setup.
+        data.rest?.let { r -> restSettings?.let { it.url = r.url; it.authType = r.authType; it.secret = r.secret; it.source = r.source } }
         val uri = data.connectionUri
         val database = data.connectionDatabase
         val connection = uri != null && database != null
