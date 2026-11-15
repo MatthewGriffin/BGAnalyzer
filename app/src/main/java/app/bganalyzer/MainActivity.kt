@@ -98,6 +98,7 @@ class MainActivity : ComponentActivity() {
                         PatternsScreen(
                             patternsState, glucoseState.unit, syncState, glucose.hasConnection,
                             patterns::setDays, patterns::setBlockHours, onSync = { glucose.sync(patternsState.days) },
+                            onExcludeDay = patterns::excludeDay, onRestoreDay = patterns::restoreDay,
                         )
                     }
                 } else if (tab == 3) {

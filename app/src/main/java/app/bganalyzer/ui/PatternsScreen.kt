@@ -15,6 +15,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -41,6 +43,8 @@ fun PatternsScreen(
     onDays: (Int) -> Unit,
     onBlockHours: (Int) -> Unit,
     onSync: () -> Unit,
+    onExcludeDay: (String, String) -> Unit = { _, _ -> },
+    onRestoreDay: (String) -> Unit = {},
 ) {
     Scaffold(contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0), topBar = { TopAppBar(title = { Text(stringResource(R.string.patterns_title)) }) }) { padding ->
         Column(
@@ -79,6 +83,7 @@ fun PatternsScreen(
                 )
             }
             EmptyDaysNotice(state.emptyDays)
+            ExcludedDaysSection(state, onExcludeDay, onRestoreDay)
             if (state.loaded && state.readingCount == 0) {
                 Text(stringResource(R.string.patterns_no_data))
                 return@Column
@@ -249,5 +254,43 @@ private fun SuggestionsSection(state: PatternsState) {
     r.held.forEach { h ->
         val what = if (h.kind == app.bganalyzer.domain.SuggestionKind.BASAL) stringResource(R.string.suggestions_basal) else stringResource(R.string.suggestions_carb_ratio)
         Text(stringResource(R.string.suggestions_held, what, hour(h.startHour), hour(h.endHour), h.reason), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    }
+}
+
+/** Mark days as bad data, e.g. a pump failure with insulin pens in use. Excluded days are left out of every analysis here. */
+@Composable
+private fun ExcludedDaysSection(state: PatternsState, onExclude: (String, String) -> Unit, onRestore: (String) -> Unit) {
+    val already = state.excludedDays.map { it.date }.toSet()
+    val candidates = (0 until state.days).map { java.time.LocalDate.now().minusDays(it.toLong()).toString() }.filter { it !in already }
+    var picked by androidx.compose.runtime.remember(candidates.firstOrNull()) { androidx.compose.runtime.mutableStateOf(candidates.firstOrNull()) }
+    var note by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.excluded_title), style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.excluded_intro), style = MaterialTheme.typography.bodySmall)
+            if (candidates.isNotEmpty()) {
+                Dropdown(
+                    label = stringResource(R.string.excluded_day_label),
+                    options = candidates,
+                    selected = picked ?: candidates.first(),
+                    text = { it },
+                    onSelect = { picked = it },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                androidx.compose.material3.OutlinedTextField(
+                    value = note, onValueChange = { note = it.take(80) }, singleLine = true,
+                    label = { Text(stringResource(R.string.excluded_note_label)) }, modifier = Modifier.fillMaxWidth(),
+                )
+                androidx.compose.material3.Button(onClick = { onExclude(picked ?: candidates.first(), note.ifBlank { "Pump failure" }); note = "" }) {
+                    Text(stringResource(R.string.excluded_button))
+                }
+            }
+            state.excludedDays.forEach { d ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text("${d.date}  ${d.note}", Modifier.weight(1f))
+                    androidx.compose.material3.TextButton(onClick = { onRestore(d.date) }) { Text(stringResource(R.string.excluded_restore)) }
+                }
+            }
+        }
     }
 }

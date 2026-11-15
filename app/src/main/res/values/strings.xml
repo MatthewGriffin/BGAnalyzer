@@ -136,4 +136,10 @@
     <string name="suggestions_less">Less insulin: about %1$d%%</string>
     <string name="suggestions_confidence">Confidence: %1$s</string>
     <string name="suggestions_held">Held back, %1$s %2$s-%3$s: %4$s</string>
+    <string name="excluded_title">Days excluded from analysis</string>
+    <string name="excluded_intro">Mark a day as bad data, for example when a pump failed and you used insulin pens. Excluded days are left out of the patterns, basal comparison and suggestions on this tab, and they are kept in your backup.</string>
+    <string name="excluded_day_label">Day to exclude</string>
+    <string name="excluded_note_label">Note (optional, default: Pump failure)</string>
+    <string name="excluded_button">Exclude this day</string>
+    <string name="excluded_restore">Restore</string>
 </resources>

@@ -13,11 +13,11 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [
         GlucoseReadingEntity::class, TreatmentEntity::class, ProfileEntity::class,
-        IobSampleEntity::class, CoverageEntity::class,
+        IobSampleEntity::class, CoverageEntity::class, ExcludedDayEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun glucoseReadingDao(): GlucoseReadingDao
@@ -25,6 +25,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun profileDao(): ProfileDao
     abstract fun iobDao(): IobDao
     abstract fun coverageDao(): CoverageDao
+    abstract fun excludedDayDao(): ExcludedDayDao
 
     companion object {
         @Volatile
