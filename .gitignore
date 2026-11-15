@@ -13,3 +13,22 @@ __pycache__/
 .env
 build/
 dist/
+
+# Android
+*.iml
+.gradle/
+.kotlin/
+.idea/
+local.properties
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+keystore.properties
+*.jks
+*.keystore
+
+# Session notes, kept local
+HANDOFF.md
