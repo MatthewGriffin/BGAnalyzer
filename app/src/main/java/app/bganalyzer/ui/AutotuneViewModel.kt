@@ -8,7 +8,7 @@ import app.bganalyzer.autotune.AtProfile
 import app.bganalyzer.autotune.AtReading
 import app.bganalyzer.autotune.AutotuneAdvice
 import app.bganalyzer.autotune.AutotuneAdvisor
-import app.bganalyzer.autotune.AutotuneData
+import app.bganalyzer.autotune.AutotuneFromDb
 import app.bganalyzer.autotune.AutotuneDoses
 import app.bganalyzer.autotune.AutotuneLimits
 import app.bganalyzer.autotune.AutotuneResult
@@ -59,40 +59,11 @@ class AutotuneViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clear() { _state.value = AutotuneState.Idle }
 
-    private suspend fun compute(days: Int): AutotuneState {
-        val now = System.currentTimeMillis()
-        val zone = db.profileDao().latest()?.timezone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
-        val end = AutotuneRun.defaultEnd(now, zone)
-        val from = end - days * DAY_MS
-        val lookback = 16L * HOUR_MS
-        val resolver = ProfileResolver(ProfileTimeline.entries(db.treatmentDao().profileEvents()), db.profileDao().all())
-        val settings = resolver.settingsAt(end)
-        val isf = settings.averageIsfMgdl() ?: return AutotuneState.Failed("The profile has no insulin sensitivity (ISF).")
-        val ic = settings.averageCarbRatio() ?: return AutotuneState.Failed("The profile has no carb ratio.")
-        val basal = (0..23).map { h ->
-            val t = java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(end), zone).minusDays(1).atStartOfDay(zone).plusHours(h.toLong()).toInstant().toEpochMilli()
-            resolver.basalAt(t, zone) ?: return AutotuneState.Failed("The profile has no basal rates.")
+    private suspend fun compute(days: Int): AutotuneState =
+        when (val r = AutotuneFromDb.run(db, days, _peak.value, System.currentTimeMillis()) { d, n -> _state.value = AutotuneState.Running(d, n) }) {
+            is AutotuneFromDb.Outcome.Failed -> AutotuneState.Failed(r.message)
+            is AutotuneFromDb.Outcome.Done -> AutotuneState.Done(r.advice, r.result, days)
         }
-        val excluded = db.excludedDayDao().all().map { it.date }.toSet()
-        val treatments = ExcludedDays.treatments(db.treatmentDao().validBetween(from - lookback, end), zone, excluded)
-        val readings = ExcludedDays.readings(db.glucoseReadingDao().between(from, end), zone, excluded).map { AtReading(it.timestampMs, it.mgdl) }
-        // priming and zero-insulin records carry no insulin that acts
-        val boluses = treatments.filter { (it.insulin ?: 0.0) > 0 && it.eventType?.contains("prim", ignoreCase = true) != true }.map { Dose(it.timestampMs, it.insulin!!) } +
-            // extended boluses (not the ones AAPS emulates with a temp basal, which are already in the temp basals)
-            treatments.filter { it.eventType == "Combo Bolus" && (it.durationMs ?: 0L) > 0 }.flatMap { t ->
-                val doc = runCatching { org.bson.Document.parse(t.rawJson) }.getOrNull()
-                val units = (doc?.get("enteredinsulin") as? Number)?.toDouble() ?: 0.0
-                if (doc?.get("isEmulatingTempBasal") == true) emptyList() else AutotuneDoses.extended(t.timestampMs, t.durationMs!!, units)
-            }
-        val meals = treatments.filter { (it.carbs ?: 0.0) > 0 }.map { AtMeal(it.timestampMs, it.carbs!!) }
-        val baseline = AtProfile(basal, isf, ic, (settings.diaHours ?: LocalInsulin.DEFAULT_DIA).coerceAtLeast(LocalInsulin.MIN_DIA), _peak.value)
-        val data = AutotuneData(readings, boluses, meals) { f, t -> BasalTimeline.build(treatments, resolver, f, t, zone) }
-        val result = AutotuneRun.run(data, baseline, AutotuneLimits(), zone, end, days, skipDate = { it in excluded }) { d, n -> _state.value = AutotuneState.Running(d, n) }
-        if (result.daysTuned == 0) {
-            return AutotuneState.Failed("No day had enough data. Skipped: " + result.skipped.joinToString { "${it.date} (${it.reason})" })
-        }
-        return AutotuneState.Done(AutotuneAdvisor.advise(result, readings, zone), result, days)
-    }
 
     companion object {
         const val KEY_PEAK = "insulin_peak"

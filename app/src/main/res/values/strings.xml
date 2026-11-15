@@ -181,4 +181,9 @@
     <string name="autotune_insulin_rapid">Rapid-acting, peak 75 min (Humalog, NovoRapid, Apidra)</string>
     <string name="autotune_insulin_ultra">Ultra-rapid, peak 55 min (Fiasp)</string>
     <string name="autotune_insulin_lyumjev">Lyumjev, peak 45 min</string>
+    <string name="no_insulin_title">%1$d days have glucose but no insulin records</string>
+    <string name="no_insulin_intro">No boluses and no loop temp basals were recorded on these days, so the pump was probably off or had failed and insulin went unrecorded (for example pens). Their glucose says nothing about basal or sensitivity. Suggestions and autotune already skip them; excluding them also removes them from the other patterns here.</string>
+    <string name="no_insulin_button">Exclude these days</string>
+    <string name="autotune_evidence">Based on %1$d meals and %2$d insulin-only readings.</string>
+    <string name="autotune_evidence_low">That is little data: treat the carb ratio and sensitivity as low confidence.</string>
 </resources>

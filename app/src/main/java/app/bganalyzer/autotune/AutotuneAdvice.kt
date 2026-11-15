@@ -21,9 +21,15 @@ data class AutotuneAdvice(
     val currentIsf: Double, val tunedIsf: Double,
     val currentCarbRatio: Double, val tunedCarbRatio: Double,
     val daysTuned: Int,
+    val mealsUsed: Int = 0,
+    val isfPoints: Int = 0,
 )
 
 object AutotuneAdvisor {
+    /** Fewer meals than this over the run makes the carb ratio low confidence; fewer insulin-only readings does the same for the ISF. */
+    const val MIN_MEALS = 10
+    const val MIN_ISF_POINTS = 20
+
     /** Share of days with a low in an hour of day that stops a basal increase there. */
     const val LOW_DAY_SHARE = 0.10
 
@@ -57,6 +63,6 @@ object AutotuneAdvisor {
             }
             HourAdvice(h, cur, new, if (held != null) cur else new, held, conf)
         }
-        return AutotuneAdvice(hours, result.original.isf, result.tuned.isf, result.original.ic, result.tuned.ic, result.daysTuned)
+        return AutotuneAdvice(hours, result.original.isf, result.tuned.isf, result.original.ic, result.tuned.ic, result.daysTuned, result.mealsUsed, result.isfPoints)
     }
 }

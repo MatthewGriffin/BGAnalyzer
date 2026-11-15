@@ -16,7 +16,8 @@ class AutotuneRunTest {
 
     private fun data(daysCovered: Int, glucose: (Long) -> Double) = AutotuneData(
         readings = (0 until daysCovered * 288 + 288).map { AtReading(origin + it * 300_000L, glucose(origin + it * 300_000L)) },
-        boluses = emptyList(), meals = emptyList(),
+        // a tiny bolus every day stands for "the pump was running": days without insulin records are skipped
+        boluses = (0..daysCovered).map { Dose(origin + it * day + 12 * hour, 0.01) }, meals = emptyList(),
         basalBetween = { f, t -> listOf(BasalSegment(f, t, 1.0, true)) },
     )
 
@@ -68,5 +69,23 @@ class AutotuneAdvisorTest {
         val readings = (0 until 7).map { AtReading(it * 86_400_000L + 3 * 3_600_000L, 100.0) }
         assertEquals(0.9, AutotuneAdvisor.advise(result(0.9), readings.map { it.copy(mgdl = 50.0) }, zone).hours[3].suggested, 0.0)
         assertEquals(1.15, AutotuneAdvisor.advise(result(1.15), readings, zone).hours[3].suggested, 0.0)
+    }
+}
+
+class NoInsulinDayTest {
+    private val zone = ZoneId.of("UTC")
+    private val hour = 3_600_000L
+    private val day = 24 * hour
+    private val origin = 1_793_491_200_000L
+
+    @Test fun aDayWithNoInsulinRecordsIsSkipped() {
+        val d = AutotuneData(
+            readings = (0 until 9 * 288).map { AtReading(origin + it * 300_000L, 110.0) },
+            boluses = listOf(Dose(origin + 2 * day + 12 * hour, 0.01)), // only one day has insulin
+            meals = emptyList(), basalBetween = { f, t -> listOf(BasalSegment(f, t, 1.0, true)) },
+        )
+        val r = AutotuneRun.run(d, AtProfile(List(24) { 1.0 }, 100.0, 10.0), AutotuneLimits(), zone, origin + 7 * day + 4 * hour, 7)
+        assertEquals(1, r.daysTuned)
+        assertTrue(r.skipped.all { it.reason.startsWith("no insulin records") })
     }
 }

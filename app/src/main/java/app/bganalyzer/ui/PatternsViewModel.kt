@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import app.bganalyzer.data.AppDatabase
 import app.bganalyzer.data.ExcludedDayEntity
 import app.bganalyzer.domain.ChangeComparison
+import app.bganalyzer.domain.DayQuality
 import app.bganalyzer.domain.ChangeResult
 import app.bganalyzer.domain.ExcludedDays
 import app.bganalyzer.domain.BasalComparison
@@ -56,6 +57,8 @@ data class PatternsState(
     val profileChanges: List<EffectiveProfile> = emptyList(),
     /** Days the user marked as bad data, newest first. They are left out of everything on this tab. */
     val excludedDays: List<ExcludedDayEntity> = emptyList(),
+    /** Days with glucose but no insulin records at all (pump off or failed, pens): candidates to exclude. */
+    val noInsulinDays: List<String> = emptyList(),
     /** Glucose before and after each profile change in the period, newest first. */
     val changes: List<ChangeResult> = emptyList(),
     val suggestions: SuggestionResult = SuggestionResult(emptyList(), emptyList()),
@@ -82,6 +85,7 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                     val resolver = ProfileResolver(ProfileTimeline.entries(db.treatmentDao().profileEvents()), db.profileDao().all())
                     val allTreatments = db.treatmentDao().validBetween(from - 12 * 3_600_000L, to)
                     val treatments = ExcludedDays.treatments(allTreatments, zone, excludedDates)
+                    val insulinDays = DayQuality.daysWithInsulin(allTreatments, zone)
                     val blockStats = TimeBlocks.analyze(readings, zone, b)
                     val mealStats = PostMeal.analyze(readings, PostMeal.meals(treatments).filter { it.timeMs >= from }, zone, b)
                     val basalStats = BasalComparison.analyze(treatments, resolver, from, to, zone, b)
@@ -93,13 +97,14 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                             unsyncedMs = SyncPlanner.unsyncedMs(coverage.map { it.source to Span(it.startMs, it.endMs) }, Span(from, to)),
                             basal = basalStats,
                             excludedDays = excluded,
+                            noInsulinDays = DayQuality.daysWithoutInsulin(allTreatments, allReadings.map { it.timestampMs }, zone, from, to, to).filter { it !in excludedDates },
                             changes = ChangeComparison.compare(
                                 ExcludedDays.readings(db.glucoseReadingDao().between(from - ChangeComparison.WINDOW_DAYS * DAY_MS, to), zone, excludedDates),
                                 resolver.changes(0L, to), from, to,
                             ).reversed(),
                             suggestions = Suggestions.generate(
                                 blockStats, mealStats, basalStats,
-                                FastingDrift.analyze(readings, treatments, zone, b),
+                                FastingDrift.analyze(readings, treatments, zone, b, insulinDays),
                                 (0 until 24 step b).associateWith { h ->
                                     val day = java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(to), zone)
                                     val rates = (0 until b * 4).mapNotNull { q ->
@@ -127,6 +132,11 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun excludeDay(date: String, note: String) {
         viewModelScope.launch(Dispatchers.IO) { db.excludedDayDao().upsertAll(listOf(ExcludedDayEntity(date, note.trim(), System.currentTimeMillis()))) }
+    }
+
+    fun excludeDays(dates: List<String>, note: String) {
+        val now = System.currentTimeMillis()
+        viewModelScope.launch(Dispatchers.IO) { db.excludedDayDao().upsertAll(dates.map { ExcludedDayEntity(it, note, now) }) }
     }
 
     fun restoreDay(date: String) {
