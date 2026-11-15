@@ -20,3 +20,14 @@ fun BGAnalyzerTheme(content: @Composable () -> Unit) {
     }
     MaterialTheme(colorScheme = colors, content = content)
 }
+
+/** Green, amber and red for high, medium and low confidence. Fixed colours (not the dynamic scheme) so they always read the same. */
+@Composable
+fun confidenceColor(confidence: app.bganalyzer.domain.Confidence): androidx.compose.ui.graphics.Color {
+    val dark = isSystemInDarkTheme()
+    return when (confidence) {
+        app.bganalyzer.domain.Confidence.HIGH -> if (dark) androidx.compose.ui.graphics.Color(0xFF81C784) else androidx.compose.ui.graphics.Color(0xFF2E7D32)
+        app.bganalyzer.domain.Confidence.MEDIUM -> if (dark) androidx.compose.ui.graphics.Color(0xFFFFB74D) else androidx.compose.ui.graphics.Color(0xFFB26A00)
+        app.bganalyzer.domain.Confidence.LOW -> if (dark) androidx.compose.ui.graphics.Color(0xFFE57373) else androidx.compose.ui.graphics.Color(0xFFC62828)
+    }
+}

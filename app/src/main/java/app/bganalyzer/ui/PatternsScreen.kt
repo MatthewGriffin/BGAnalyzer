@@ -266,7 +266,10 @@ private fun SuggestionsSection(state: PatternsState, syncing: Boolean) {
                 Text("$what ${hour(s.startHour)}-${hour(s.endHour)}", style = MaterialTheme.typography.titleSmall)
                 val change = stringResource(if (s.moreInsulin) R.string.suggestions_more else R.string.suggestions_less, s.changePct)
                 Text(if (s.fromUph != null && s.toUph != null) "$change (${rate(s.fromUph)} -> ${rate(s.toUph)} U/h)" else change)
-                Text(stringResource(R.string.suggestions_confidence, s.confidence.name.lowercase().replaceFirstChar { it.uppercase() }), style = MaterialTheme.typography.bodySmall)
+                Text(
+                    stringResource(R.string.suggestions_confidence, s.confidence.name.lowercase().replaceFirstChar { it.uppercase() }),
+                    style = MaterialTheme.typography.bodyMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = confidenceColor(s.confidence),
+                )
                 s.detail?.let { Text(it) }
                 s.evidence.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
