@@ -16,6 +16,9 @@ interface GlucoseReadingDao {
     @Query("SELECT * FROM glucose_readings ORDER BY timestampMs")
     suspend fun all(): List<GlucoseReadingEntity>
 
+    @Query("SELECT timestampMs FROM glucose_readings WHERE timestampMs >= :fromMs ORDER BY timestampMs")
+    suspend fun timestampsSince(fromMs: Long): List<Long>
+
     @Query("SELECT MAX(timestampMs) FROM glucose_readings")
     suspend fun newestTimestamp(): Long?
 

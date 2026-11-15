@@ -9,6 +9,8 @@ import app.bganalyzer.domain.GlucoseUnit
 import app.bganalyzer.domain.MealBlockStats
 import app.bganalyzer.domain.PostMeal
 import app.bganalyzer.domain.TimeBlocks
+import app.bganalyzer.sync.Span
+import app.bganalyzer.sync.SyncPlanner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,6 +30,8 @@ data class PatternsState(
     val blocks: List<BlockStats> = emptyList(),
     val meals: List<MealBlockStats> = emptyList(),
     val unit: GlucoseUnit = GlucoseUnit.MMOL,
+    /** How much of the period has never been requested from Nightscout; see [SyncPlanner.unsyncedMs]. */
+    val unsyncedMs: Long = 0,
 )
 
 class PatternsViewModel(app: Application) : AndroidViewModel(app) {
@@ -36,10 +40,10 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
     private val blockHours = MutableStateFlow(6)
     private val refresh = MutableStateFlow(0)
 
-    val state: StateFlow<PatternsState> = combine(days, blockHours, refresh) { d, b, _ -> d to b }
+    val state: StateFlow<PatternsState> = combine(days, blockHours, refresh, db.coverageDao().observeAll()) { d, b, _, coverage -> Triple(d, b, coverage) }
         .let { settings ->
             kotlinx.coroutines.flow.flow {
-                settings.collect { (d, b) ->
+                settings.collect { (d, b, coverage) ->
                     val to = System.currentTimeMillis()
                     val from = to - d * DAY_MS
                     val zone = db.profileDao().latest()?.timezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
@@ -51,6 +55,7 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                             d, b, true, readings.size, zone.id,
                             TimeBlocks.analyze(readings, zone, b),
                             PostMeal.analyze(readings, PostMeal.meals(treatments).filter { it.timeMs >= from }, zone, b),
+                            unsyncedMs = SyncPlanner.unsyncedMs(coverage.map { it.source to Span(it.startMs, it.endMs) }, Span(from, to)),
                         ),
                     )
                 }

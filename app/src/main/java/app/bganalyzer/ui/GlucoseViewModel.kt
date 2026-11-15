@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import app.bganalyzer.R
 import app.bganalyzer.data.AppDatabase
 import app.bganalyzer.data.GlucoseReadingEntity
+import app.bganalyzer.data.IobSampleEntity
+import app.bganalyzer.sync.Span
+import app.bganalyzer.sync.SyncPlanner
 import app.bganalyzer.domain.BasalSegment
 import app.bganalyzer.domain.BasalTimeline
 import app.bganalyzer.data.TreatmentEntity
@@ -34,7 +37,7 @@ enum class ChartLayout { OVERLAID, SEPARATE }
 sealed interface SyncState {
     data object Idle : SyncState
     data class Running(val stored: Int) : SyncState
-    data class Done(val glucose: Int, val treatments: Int, val profiles: Int) : SyncState
+    data class Done(val glucose: Int, val treatments: Int, val profiles: Int, val iob: Int, val spans: Int) : SyncState
     data class Failed(val message: String) : SyncState
 }
 
@@ -54,6 +57,10 @@ data class GlucoseUiState(
     /** Basal over the period: temp basals, with the profile schedule where none was running. */
     val basal: List<BasalSegment> = emptyList(),
     val layout: ChartLayout = ChartLayout.OVERLAID,
+    /** Insulin and carbs on board reported by the loop in the period, oldest first. */
+    val iob: List<IobSampleEntity> = emptyList(),
+    /** How much of the period has never been asked for from Nightscout (not counting the recent tail). Zero when complete. */
+    val unsyncedMs: Long = 0,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -78,7 +85,10 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
             val to = System.currentTimeMillis()
             val from = to - d * DAY_MS
             // A temp basal that started before the window can still be running at its start, so look back 12 hours.
-            combine(dao.observeSince(from), db.treatmentDao().observeValidSince(from - BASAL_LOOKBACK_MS)) { rows, all ->
+            combine(
+                dao.observeSince(from), db.treatmentDao().observeValidSince(from - BASAL_LOOKBACK_MS),
+                db.iobDao().observeSince(from), db.coverageDao().observeAll(),
+            ) { rows, all, iob, coverage ->
                 val treatments = all.filter { it.timestampMs >= from }
                 val meals = PostMeal.meals(treatments)
                 val profiles = db.profileDao().all()
@@ -90,6 +100,8 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
                     carbsTotal = meals.sumOf { it.carbs },
                     bolusInsulinTotal = treatments.sumOf { (it.insulin ?: 0.0).coerceAtLeast(0.0) },
                     basal = BasalTimeline.build(all, profiles, from, to, zone),
+                    iob = iob,
+                    unsyncedMs = SyncPlanner.unsyncedMs(coverage.map { it.source to Span(it.startMs, it.endMs) }, Span(from, to)),
                 )
             }
         }
@@ -111,7 +123,8 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
         viewPrefs.edit().putString("chart_layout", value.name).apply()
     }
 
-    fun sync() {
+    /** Makes the last [days] days complete: only missing or recent stretches are requested. The Overview passes its own period, the Patterns tab its own. */
+    fun sync(days: Int) {
         if (_sync.value is SyncState.Running) return
         val uri = store.uri
         val database = store.database
@@ -122,10 +135,10 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
         _sync.value = SyncState.Running(0)
         viewModelScope.launch(Dispatchers.IO) {
             _sync.value = try {
-                val result = NightscoutSync(db).run(uri, database) { _sync.value = SyncState.Running(it) }
+                val result = NightscoutSync(db).run(uri, database, days) { _sync.value = SyncState.Running(it) }
                 // The window moves with the clock, so refresh it after new data arrives.
                 refresh.update { it + 1 }
-                SyncState.Done(result.glucoseFetched, result.treatmentsFetched, result.profilesFetched)
+                SyncState.Done(result.glucoseFetched, result.treatmentsFetched, result.profilesFetched, result.iobFetched, result.spans)
             } catch (e: Exception) {
                 SyncState.Failed(ConnectionErrors.describe(e))
             }

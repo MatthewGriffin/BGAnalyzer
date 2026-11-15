@@ -86,13 +86,16 @@ class MainActivity : ComponentActivity() {
                             onDaysChange = glucose::setDays,
                             onUnitChange = glucose::setUnit,
                             onLayoutChange = glucose::setLayout,
-                            onSync = glucose::sync,
+                            onSync = { glucose.sync(glucoseState.days) },
                         )
                     }
                 } else if (tab == 1) {
                     val patternsState by patterns.state.collectAsState()
                     Box(Modifier.padding(inner)) {
-                        PatternsScreen(patternsState, glucoseState.unit, patterns::setDays, patterns::setBlockHours)
+                        PatternsScreen(
+                            patternsState, glucoseState.unit, syncState, glucose.hasConnection,
+                            patterns::setDays, patterns::setBlockHours, onSync = { glucose.sync(patternsState.days) },
+                        )
                     }
                 } else if (tab == 3) {
                     Box(Modifier.padding(inner)) {

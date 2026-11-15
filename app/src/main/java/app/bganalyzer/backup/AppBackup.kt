@@ -1,6 +1,7 @@
 package app.bganalyzer.backup
 
 import app.bganalyzer.data.GlucoseReadingDao
+import app.bganalyzer.data.IobDao
 import app.bganalyzer.data.ProfileDao
 import app.bganalyzer.data.TreatmentDao
 import java.io.InputStream
@@ -12,19 +13,20 @@ interface ConnectionSettings {
     var database: String
 }
 
-data class RestoreResult(val readings: Int, val connectionRestored: Boolean, val treatments: Int = 0, val profiles: Int = 0)
+data class RestoreResult(val readings: Int, val connectionRestored: Boolean, val treatments: Int = 0, val profiles: Int = 0, val iob: Int = 0)
 
 /** Writes and restores the full-app backup. Takes streams so it can be tested without a device. */
 class AppBackup(
     private val dao: GlucoseReadingDao,
     private val treatmentDao: TreatmentDao,
     private val profileDao: ProfileDao,
+    private val iobDao: IobDao,
     private val settings: ConnectionSettings,
     private val nowMs: () -> Long = System::currentTimeMillis,
 ) {
     suspend fun export(out: OutputStream, passphrase: String): Int {
         val readings = dao.all()
-        val data = BackupData(nowMs(), settings.uri.ifBlank { null }, settings.database.ifBlank { null }, readings, treatmentDao.all(), profileDao.all())
+        val data = BackupData(nowMs(), settings.uri.ifBlank { null }, settings.database.ifBlank { null }, readings, treatmentDao.all(), profileDao.all(), iobDao.all())
         out.write(BackupCodec.encode(data, passphrase))
         out.flush()
         return readings.size
@@ -40,6 +42,7 @@ class AppBackup(
         data.glucose.chunked(1000).forEach { dao.upsertAll(it) }
         data.treatments.chunked(1000).forEach { treatmentDao.upsertAll(it) }
         data.profiles.chunked(1000).forEach { profileDao.upsertAll(it) }
+        data.iob.chunked(1000).forEach { iobDao.upsertAll(it) }
         val uri = data.connectionUri
         val database = data.connectionDatabase
         val connection = uri != null && database != null
@@ -47,6 +50,6 @@ class AppBackup(
             settings.uri = uri!!
             settings.database = database!!
         }
-        return RestoreResult(data.glucose.size, connection, data.treatments.size, data.profiles.size)
+        return RestoreResult(data.glucose.size, connection, data.treatments.size, data.profiles.size, data.iob.size)
     }
 }

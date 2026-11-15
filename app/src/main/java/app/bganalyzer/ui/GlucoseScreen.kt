@@ -60,12 +60,15 @@ fun GlucoseScreen(
             Button(onClick = onSync, enabled = hasConnection && sync !is SyncState.Running) {
                 Text(stringResource(R.string.sync_button))
             }
+            if (state.unsyncedMs > 60 * 60 * 1000L && sync !is SyncState.Running) {
+                Text(stringResource(R.string.sync_unsynced_notice), color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodyMedium)
+            }
             when (sync) {
                 is SyncState.Running -> {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Text(stringResource(R.string.sync_running, sync.stored))
                 }
-                is SyncState.Done -> Text(stringResource(R.string.sync_done, sync.glucose, sync.treatments, sync.profiles))
+                is SyncState.Done -> Text(stringResource(R.string.sync_done, sync.glucose, sync.treatments, sync.iob, sync.spans))
                 is SyncState.Failed -> {
                     Text(stringResource(R.string.sync_failed), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall)
                     Text(sync.message)

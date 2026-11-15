@@ -11,15 +11,20 @@ import androidx.room.RoomDatabase
  * destructive fallback. Version 2 only adds tables.
  */
 @Database(
-    entities = [GlucoseReadingEntity::class, TreatmentEntity::class, ProfileEntity::class],
-    version = 2,
+    entities = [
+        GlucoseReadingEntity::class, TreatmentEntity::class, ProfileEntity::class,
+        IobSampleEntity::class, CoverageEntity::class,
+    ],
+    version = 3,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun glucoseReadingDao(): GlucoseReadingDao
     abstract fun treatmentDao(): TreatmentDao
     abstract fun profileDao(): ProfileDao
+    abstract fun iobDao(): IobDao
+    abstract fun coverageDao(): CoverageDao
 
     companion object {
         @Volatile

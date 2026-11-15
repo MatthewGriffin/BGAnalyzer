@@ -18,7 +18,7 @@
     <string name="glucose_title">Overview</string>
     <string name="sync_button">Sync now</string>
     <string name="sync_running">Syncing… %1$d readings</string>
-    <string name="sync_done">Synced. Checked %1$d readings, %2$d treatments and %3$d profiles.</string>
+    <string name="sync_done">Synced. Asked for %4$d stretches of time and checked %1$d readings, %2$d treatments and %3$d insulin-on-board records. Only missing or recent data is requested.</string>
     <string name="sync_failed">Sync failed</string>
     <string name="sync_no_connection">Set up the connection first.</string>
     <string name="sync_need_connection">Set up the Nightscout connection on the Connection tab, then sync.</string>
@@ -101,4 +101,11 @@
     <string name="layout_overlaid">Overlaid</string>
     <string name="layout_separate">Separate</string>
     <string name="chart_legend_overlaid">One chart: glucose line, basal as the teal area along the bottom (its own scale, labelled at the top of the area; lighter where it is the profile schedule, which ignores profile percentage and time shift), carbs as orange circles and insulin boluses as blue triangles on the glucose line (smaller and lighter for automatic micro-boluses). Amounts are written next to them for periods up to 2 days.</string>
+    <string name="sync_unsynced_notice">Part of this period has not been synced yet. Press Sync now to fill it in; only the missing part is requested.</string>
+    <string name="moment_iob">Insulin on board %1$s U (basal %2$s U)</string>
+    <string name="moment_iob_only">Insulin on board %1$s U</string>
+    <string name="moment_cob">Carbs on board %1$s g</string>
+    <string name="moment_no_iob">No insulin-on-board data for this time</string>
+    <string name="chart_legend_iob">Purple line: insulin on board as reported by the loop, on its own scale (shown on the overlaid layout; the moment card shows it for both).</string>
+    <string name="patterns_sync_button">Sync the last %1$d days</string>
 </resources>

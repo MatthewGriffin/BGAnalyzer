@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.bganalyzer.R
 import app.bganalyzer.data.GlucoseReadingEntity
+import app.bganalyzer.data.IobSampleEntity
 import app.bganalyzer.domain.BasalSegment
 import app.bganalyzer.domain.GlucoseRanges
 import app.bganalyzer.domain.GlucoseUnit
@@ -50,6 +51,9 @@ private val BASAL_COLOR = Color(0xFF1F9E8F)
 private val BOLUS_COLOR = Color(0xFF3B6FD4)
 private val SMB_COLOR = Color(0xFF8DB0F0)
 private val CARB_COLOR = Color(0xFFE08A1E)
+private val IOB_COLOR = Color(0xFF8E4FD0)
+/** IOB samples further apart than this are drawn as a gap. */
+private const val IOB_GAP_MS = 60 * 60 * 1000L
 
 /**
  * The glucose chart, the insulin panel under it, and a readout for the moment the user touches.
@@ -74,18 +78,19 @@ fun GlucoseCharts(state: GlucoseUiState, ranges: GlucoseRanges = GlucoseRanges()
             },
         ) {
             val overlaid = state.layout == ChartLayout.OVERLAID
-            GlucoseChart(state.points, state.fromMs, state.toMs, state.unit, state.treatments, state.basal, overlaid, selected, ranges)
+            GlucoseChart(state.points, state.fromMs, state.toMs, state.unit, state.treatments, state.basal, state.iob, overlaid, selected, ranges)
             if (!overlaid) InsulinPanel(state, selected)
         }
         // With nothing touched the card describes right now (the end of the chart).
-        val moment = Moment.at(selected ?: (state.toMs - 1), state.points, state.treatments, state.basal)
+        val moment = Moment.at(selected ?: (state.toMs - 1), state.points, state.treatments, state.basal, state.iob)
         MomentCard(
             moment, state.unit, isNow = selected == null, latest = state.points.lastOrNull(),
             onBackToNow = { selected = null },
         )
         if (selected == null) Text(stringResource(R.string.chart_touch_hint), style = MaterialTheme.typography.bodySmall)
         Text(
-            stringResource(if (state.layout == ChartLayout.OVERLAID) R.string.chart_legend_overlaid else R.string.chart_legend),
+            stringResource(if (state.layout == ChartLayout.OVERLAID) R.string.chart_legend_overlaid else R.string.chart_legend) +
+                if (state.layout == ChartLayout.OVERLAID && state.iob.isNotEmpty()) " " + stringResource(R.string.chart_legend_iob) else "",
             style = MaterialTheme.typography.bodySmall,
         )
     }
@@ -130,6 +135,15 @@ private fun MomentCard(
                     String.format(Locale.getDefault(), "%.2f", basal.rateUph),
                 ),
             )
+            val iobSample = m.iob
+            Text(
+                when {
+                    iobSample?.iob != null && iobSample.basalIob != null -> stringResource(R.string.moment_iob, String.format(Locale.getDefault(), "%.2f", iobSample.iob), String.format(Locale.getDefault(), "%.2f", iobSample.basalIob))
+                    iobSample?.iob != null -> stringResource(R.string.moment_iob_only, String.format(Locale.getDefault(), "%.2f", iobSample.iob))
+                    else -> stringResource(R.string.moment_no_iob)
+                },
+            )
+            iobSample?.cob?.takeIf { it > 0 }?.let { Text(stringResource(R.string.moment_cob, one(it))) }
             Text(stringResource(R.string.moment_last3h, one(m.carbsLast3h), one(m.bolusLast3h)))
             m.lastCarbs?.let { Text(stringResource(R.string.moment_last_carbs, one(it.first), ago(it.second))) }
             m.lastBolus?.let {
@@ -148,6 +162,7 @@ fun GlucoseChart(
     unit: GlucoseUnit,
     treatments: List<app.bganalyzer.data.TreatmentEntity>,
     basal: List<BasalSegment>,
+    iob: List<IobSampleEntity>,
     /** True: basal and markers are drawn on the glucose chart itself, like AAPS. False: only carb dots; insulin has its own panel. */
     overlay: Boolean,
     selectedMs: Long?,
@@ -232,6 +247,26 @@ fun GlucoseChart(
         }
         drawPath(path, line, style = Stroke(width = 1.5.dp.toPx()))
         dots.forEach { drawCircle(line, 1.5.dp.toPx(), it) }
+        if (overlay && iob.isNotEmpty()) {
+            // Insulin on board as a purple line on its own scale: 0 at the bottom, the highest value at 45% of the height.
+            val iobMax = Math.ceil((iob.maxOfOrNull { it.iob ?: 0.0 } ?: 0.0).coerceAtLeast(1.0))
+            val zone = h * 0.45f
+            val iobPath = Path()
+            var prevT = Long.MIN_VALUE
+            var lastIobX = Float.NEGATIVE_INFINITY
+            for (smp in iob) {
+                val v = smp.iob ?: continue
+                if (smp.timestampMs !in fromMs..toMs) continue
+                val px = x(smp.timestampMs)
+                val py = h - zone * (v / iobMax).toFloat().coerceIn(0f, 1f)
+                if (prevT == Long.MIN_VALUE || smp.timestampMs - prevT > IOB_GAP_MS) { iobPath.moveTo(px, py); lastIobX = px }
+                else if (px - lastIobX >= 1f) { iobPath.lineTo(px, py); lastIobX = px }
+                prevT = smp.timestampMs
+            }
+            drawPath(iobPath, IOB_COLOR, style = Stroke(width = 1.5.dp.toPx()))
+            val m = measurer.measure(String.format(Locale.getDefault(), "%.0f U IOB", iobMax), TextStyle(fontSize = 11.sp, color = IOB_COLOR))
+            drawText(m, topLeft = Offset(left - m.size.width - 4.dp.toPx(), h - zone - m.size.height / 2f))
+        }
         if (overlay) {
             // Carbs (orange circle) and boluses (blue triangle) sit on the glucose line at the time they happened.
             // Amounts are written next to them only when the period is short enough to stay readable.

@@ -1,6 +1,7 @@
 package app.bganalyzer.backup
 
 import app.bganalyzer.data.GlucoseReadingEntity
+import app.bganalyzer.data.IobSampleEntity
 import app.bganalyzer.data.ProfileEntity
 import app.bganalyzer.data.TreatmentEntity
 import app.bganalyzer.sync.GlucoseEntryMapper
@@ -28,6 +29,8 @@ data class BackupData(
     /** Added after version 1 files existed; an older file simply has none. */
     val treatments: List<TreatmentEntity> = emptyList(),
     val profiles: List<ProfileEntity> = emptyList(),
+    /** Insulin on board reported by the loop. Sync coverage is not saved: it is rebuilt by the next sync. */
+    val iob: List<IobSampleEntity> = emptyList(),
 )
 
 class BackupException(val reason: Reason, message: String) : Exception(message) {
@@ -62,6 +65,7 @@ object BackupCodec {
             .append("glucose", data.glucose.map { listOf(it.timestampMs, it.mgdl) })
             .append("treatments", data.treatments.map(::treatmentDoc))
             .append("profiles", data.profiles.map(::profileDoc))
+            .append("iob", data.iob.map(::iobDoc))
         val salt = ByteArray(16).also(SecureRandom()::nextBytes)
         val iv = ByteArray(12).also(SecureRandom()::nextBytes)
         val sealed = cipher(Cipher.ENCRYPT_MODE, key(passphrase, salt, ITERATIONS), iv)
@@ -126,6 +130,7 @@ object BackupCodec {
         return BackupData(
             treatments = (payload["treatments"] as? List<*>).orEmpty().mapNotNull { (it as? Document)?.let(::treatmentFrom) },
             profiles = (payload["profiles"] as? List<*>).orEmpty().mapNotNull { (it as? Document)?.let(::profileFrom) },
+            iob = (payload["iob"] as? List<*>).orEmpty().mapNotNull { (it as? Document)?.let(::iobFrom) },
             createdMs = (payload["createdMs"] as? Number)?.toLong() ?: 0L,
             connectionUri = (connection?.get("uri") as? String)?.takeIf { it.isNotBlank() },
             connectionDatabase = (connection?.get("database") as? String)?.takeIf { it.isNotBlank() },
@@ -152,6 +157,20 @@ object BackupCodec {
         valid = d["valid"] != false,
         srvModifiedMs = (d["srv"] as? Number)?.toLong(),
         rawJson = d["raw"] as? String ?: "{}",
+        )
+    }
+
+    private fun iobDoc(i: IobSampleEntity) = Document("id", i.id).append("t", i.timestampMs)
+        .append("iob", i.iob).append("basal", i.basalIob).append("act", i.activity).append("cob", i.cob)
+
+    private fun iobFrom(d: Document): IobSampleEntity? {
+        return IobSampleEntity(
+            id = d.getString("id") ?: return null,
+            timestampMs = (d["t"] as? Number)?.toLong() ?: return null,
+            iob = (d["iob"] as? Number)?.toDouble(),
+            basalIob = (d["basal"] as? Number)?.toDouble(),
+            activity = (d["act"] as? Number)?.toDouble(),
+            cob = (d["cob"] as? Number)?.toDouble(),
         )
     }
 
