@@ -25,7 +25,7 @@ data class ChangeResult(
 object ChangeComparison {
     const val WINDOW_DAYS = 7
     const val MIN_DAYS = 2.0
-    private const val DAY_MS = 86_400_000L
+    internal const val DAY_MS = 86_400_000L
 
     /** [readings] sorted by time and already stripped of excluded days. [changes] are all known switches, oldest first. */
     fun compare(readings: List<GlucoseReadingEntity>, changes: List<EffectiveProfile>, periodFromMs: Long, nowMs: Long): List<ChangeResult> {
@@ -43,7 +43,7 @@ object ChangeComparison {
         }
     }
 
-    private fun summary(readings: List<GlucoseReadingEntity>, from: Long, to: Long): PeriodSummary {
+    internal fun summary(readings: List<GlucoseReadingEntity>, from: Long, to: Long): PeriodSummary {
         val inside = readings.filter { it.timestampMs in from until to }
         return PeriodSummary(maxOf(0L, to - from) / DAY_MS.toDouble(), inside.size, TimeInRange.of(inside.map { it.mgdl }))
     }

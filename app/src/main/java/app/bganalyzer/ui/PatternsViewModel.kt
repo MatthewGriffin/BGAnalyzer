@@ -13,6 +13,8 @@ import app.bganalyzer.domain.BasalComparison
 import app.bganalyzer.domain.BasalComparisonResult
 import app.bganalyzer.domain.BlockStats
 import app.bganalyzer.domain.EffectiveProfile
+import app.bganalyzer.domain.EquipmentChanges
+import app.bganalyzer.domain.EquipmentResult
 import app.bganalyzer.domain.ProfileResolver
 import app.bganalyzer.domain.ProfileTimeline
 import app.bganalyzer.domain.GlucoseUnit
@@ -58,6 +60,8 @@ data class PatternsState(
     val noInsulinDays: List<String> = emptyList(),
     /** Glucose before and after each profile change in the period, newest first. */
     val changes: List<ChangeResult> = emptyList(),
+    /** Glucose before and after each site, insulin or sensor change in the period, newest first. */
+    val equipment: List<EquipmentResult> = emptyList(),
 )
 
 class PatternsViewModel(app: Application) : AndroidViewModel(app) {
@@ -81,6 +85,8 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                     val resolver = ProfileResolver(ProfileTimeline.entries(db.treatmentDao().profileEvents()), db.profileDao().all())
                     val allTreatments = db.treatmentDao().validBetween(from - 12 * 3_600_000L, to)
                     val treatments = ExcludedDays.treatments(allTreatments, zone, excludedDates)
+                    // glucose from a week before the period too, so a change at its start has a "before"
+                    val windowReadings = ExcludedDays.readings(db.glucoseReadingDao().between(from - ChangeComparison.WINDOW_DAYS * DAY_MS, to), zone, excludedDates)
                     val blockStats = TimeBlocks.analyze(readings, zone, b)
                     val mealStats = PostMeal.analyze(readings, PostMeal.meals(treatments).filter { it.timeMs >= from }, zone, b)
                     val basalStats = BasalComparison.analyze(treatments, resolver, from, to, zone, b)
@@ -94,8 +100,12 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                             excludedDays = excluded,
                             noInsulinDays = DayQuality.daysWithoutInsulin(allTreatments, allReadings.map { it.timestampMs }, zone, from, to, to).filter { it !in excludedDates },
                             changes = ChangeComparison.compare(
-                                ExcludedDays.readings(db.glucoseReadingDao().between(from - ChangeComparison.WINDOW_DAYS * DAY_MS, to), zone, excludedDates),
+                                windowReadings,
                                 resolver.changes(0L, to), from, to,
+                            ).reversed(),
+                            equipment = EquipmentChanges.compare(
+                                windowReadings,
+                                EquipmentChanges.from(db.treatmentDao().validBetween(from - ChangeComparison.WINDOW_DAYS * DAY_MS, to + 1)), from, to,
                             ).reversed(),
                             profileChanges = resolver.changes(from, to),
                             emptyDays = run {
