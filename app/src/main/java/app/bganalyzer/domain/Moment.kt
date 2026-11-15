@@ -1,6 +1,7 @@
 package app.bganalyzer.domain
 
 import app.bganalyzer.data.GlucoseReadingEntity
+import app.bganalyzer.data.IobSampleEntity
 import app.bganalyzer.data.TreatmentEntity
 
 /** What was going on at one moment, for the touch-and-slide readout on the chart. */
@@ -16,10 +17,13 @@ data class MomentSummary(
     val lastCarbs: Pair<Double, Long>?,
     /** The most recent insulin bolus (units, whether automatic, how long before). */
     val lastBolus: Triple<Double, Boolean, Long>?,
+    /** Insulin and carbs on board as last reported by the loop at or before the moment (within [Moment.MAX_IOB_AGE_MS]). */
+    val iob: IobSampleEntity? = null,
 )
 
 object Moment {
     const val MAX_READING_GAP_MS = 10 * 60_000L
+    const val MAX_IOB_AGE_MS = 30 * 60_000L
     private const val WINDOW_MS = 3 * 3_600_000L
 
     /** [readings] must be sorted by time. [treatments] are valid treatments, any order. */
@@ -28,6 +32,7 @@ object Moment {
         readings: List<GlucoseReadingEntity>,
         treatments: List<TreatmentEntity>,
         basal: List<BasalSegment>,
+        iob: List<IobSampleEntity> = emptyList(),
     ): MomentSummary {
         val nearest = nearest(readings, timeMs)?.takeIf { kotlin.math.abs(it.timestampMs - timeMs) <= MAX_READING_GAP_MS }
         val before = treatments.filter { it.valid && it.timestampMs <= timeMs }
@@ -43,6 +48,7 @@ object Moment {
             bolusLast3h = recent.sumOf { it.insulin ?: 0.0 },
             lastCarbs = carbEvents.maxByOrNull { it.timestampMs }?.let { it.carbs!! to timeMs - it.timestampMs },
             lastBolus = bolusEvents.maxByOrNull { it.timestampMs }?.let { Triple(it.insulin!!, it.isSmb, timeMs - it.timestampMs) },
+            iob = iob.filter { it.timestampMs <= timeMs && timeMs - it.timestampMs <= MAX_IOB_AGE_MS }.maxByOrNull { it.timestampMs },
         )
     }
 

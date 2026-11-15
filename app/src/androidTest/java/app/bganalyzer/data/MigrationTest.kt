@@ -38,4 +38,23 @@ class MigrationTest {
         db.query("SELECT COUNT(*) FROM treatments").use { c -> c.moveToFirst(); assertEquals(0, c.getInt(0)) }
         db.query("SELECT COUNT(*) FROM profiles").use { c -> c.moveToFirst(); assertEquals(0, c.getInt(0)) }
     }
+
+    @Test
+    fun version2To3KeepsAllSavedDataAndAddsTheNewTables() {
+        helper.createDatabase("migration-test-v2", 2).apply {
+            execSQL("INSERT INTO glucose_readings (timestampMs, mgdl) VALUES (1000, 5.5), (2000, 120.0)")
+            execSQL(
+                "INSERT INTO treatments (id, timestampMs, eventType, insulin, carbs, isSmb, rateUph, durationMs, percentage, valid, srvModifiedMs, rawJson) " +
+                    "VALUES ('t1', 1500, 'Meal Bolus', 2.5, 30.0, 0, NULL, NULL, NULL, 1, NULL, '{}')",
+            )
+            execSQL("INSERT INTO profiles (id, startMs, defaultProfile, units, timezone, rawJson) VALUES ('p1', 10, 'main', 'mmol', 'Europe/London', '{}')")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("migration-test-v2", 3, true)
+        db.query("SELECT COUNT(*) FROM glucose_readings").use { c -> c.moveToFirst(); assertEquals(2, c.getInt(0)) }
+        db.query("SELECT carbs FROM treatments WHERE id = 't1'").use { c -> c.moveToFirst(); assertEquals(30.0, c.getDouble(0), 0.0) }
+        db.query("SELECT timezone FROM profiles WHERE id = 'p1'").use { c -> c.moveToFirst(); assertEquals("Europe/London", c.getString(0)) }
+        db.query("SELECT COUNT(*) FROM iob_samples").use { c -> c.moveToFirst(); assertEquals(0, c.getInt(0)) }
+        db.query("SELECT COUNT(*) FROM sync_coverage").use { c -> c.moveToFirst(); assertEquals(0, c.getInt(0)) }
+    }
 }

@@ -58,4 +58,14 @@ class MomentTest {
         assertNull(Moment.glucoseNear(rs, t0 + 30 * min))
         assertEquals(110.0, Moment.glucoseNear(rs, t0 + 30 * min, maxGapMs = 30 * min)!!, 0.0)
     }
+
+    @Test
+    fun iobIsTheLatestSampleAtOrBeforeTheMomentAndNotStale() {
+        val a = app.bganalyzer.data.IobSampleEntity("a", t0, 1.0, 0.1, null, 10.0)
+        val b = app.bganalyzer.data.IobSampleEntity("b", t0 + 20 * min, 2.0, 0.2, null, null)
+        val c = app.bganalyzer.data.IobSampleEntity("c", t0 + 50 * min, 3.0, 0.3, null, null)
+        assertEquals("b", Moment.at(t0 + 25 * min, emptyList(), emptyList(), emptyList(), listOf(a, b, c)).iob!!.id)
+        assertNull(Moment.at(t0 - 1, emptyList(), emptyList(), emptyList(), listOf(a)).iob)
+        assertNull(Moment.at(t0 + 31 * min, emptyList(), emptyList(), emptyList(), listOf(a)).iob)
+    }
 }

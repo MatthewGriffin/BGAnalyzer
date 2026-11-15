@@ -31,13 +31,33 @@ private val PERIODS = listOf(7, 14, 30, 60, 90)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PatternsScreen(state: PatternsState, unit: GlucoseUnit, onDays: (Int) -> Unit, onBlockHours: (Int) -> Unit) {
+fun PatternsScreen(
+    state: PatternsState,
+    unit: GlucoseUnit,
+    sync: SyncState,
+    hasConnection: Boolean,
+    onDays: (Int) -> Unit,
+    onBlockHours: (Int) -> Unit,
+    onSync: () -> Unit,
+) {
     Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.patterns_title)) }) }) { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(stringResource(R.string.patterns_intro))
+            if (state.unsyncedMs > 60 * 60 * 1000L && sync !is SyncState.Running) {
+                Text(stringResource(R.string.sync_unsynced_notice), color = MaterialTheme.colorScheme.tertiary)
+            }
+            androidx.compose.material3.Button(onClick = onSync, enabled = hasConnection && sync !is SyncState.Running) {
+                Text(stringResource(R.string.patterns_sync_button, state.days))
+            }
+            when (sync) {
+                is SyncState.Running -> Text(stringResource(R.string.sync_running, sync.stored))
+                is SyncState.Done -> Text(stringResource(R.string.sync_done, sync.glucose, sync.treatments, sync.iob, sync.spans), style = MaterialTheme.typography.bodySmall)
+                is SyncState.Failed -> Text(sync.message, color = MaterialTheme.colorScheme.error)
+                SyncState.Idle -> Unit
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Dropdown(
                     label = stringResource(R.string.range_label),
