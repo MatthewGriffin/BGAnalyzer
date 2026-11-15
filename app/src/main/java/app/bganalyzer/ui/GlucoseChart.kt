@@ -90,12 +90,6 @@ fun GlucoseCharts(state: GlucoseUiState, ranges: GlucoseRanges = GlucoseRanges()
             onBackToNow = { selected = null },
         )
         if (selected == null) Text(stringResource(R.string.chart_touch_hint), style = MaterialTheme.typography.bodySmall)
-        Text(
-            stringResource(if (state.layout == ChartLayout.OVERLAID) R.string.chart_legend_overlaid else R.string.chart_legend) +
-                if (state.layout == ChartLayout.OVERLAID && state.iob.isNotEmpty()) " " + stringResource(R.string.chart_legend_iob) else "" +
-                if (state.profiles.any { it.startMs in state.fromMs..state.toMs }) " " + stringResource(R.string.chart_legend_profile) else "",
-            style = MaterialTheme.typography.bodySmall,
-        )
     }
 }
 
