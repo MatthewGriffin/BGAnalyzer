@@ -20,6 +20,8 @@ data class EffectiveProfile(
     /** Basal steps with [percentage] and [timeshiftHours] applied. */
     val basal: List<BasalStep>,
     val source: Source,
+    /** Sensitivity and carb ratio of this profile with the modifier applied; empty when the record had none. */
+    val settings: ProfileSettings = ProfileSettings.NONE,
 ) {
     enum class Source { EFFECTIVE_RECORD, SWITCH_RECORD, UPLOADED_PROFILE }
 
@@ -74,9 +76,12 @@ object ProfileTimeline {
             val baseSteps = basalOf(d["profileJson"] as? String).orEmpty()
             val steps = effectiveSteps ?: applyModifier(baseSteps, percentage, shift)
             if (steps.isEmpty()) continue
+            val settings = if (pair != null && effectiveSteps != null) ProfileSettings.fromJson(pair.second?.get("profileJson") as? String)
+                else ProfileSettings.fromJson(d["profileJson"] as? String, percentage, shift)
             out += EffectiveProfile(
                 t.timestampMs, name, percentage, shift, duration, steps,
                 if (effectiveSteps != null) EffectiveProfile.Source.EFFECTIVE_RECORD else EffectiveProfile.Source.SWITCH_RECORD,
+                settings,
             )
         }
         // An effective record with no switch next to it (the switch was not synced) still tells what was running.
@@ -86,6 +91,7 @@ object ProfileTimeline {
             out += EffectiveProfile(
                 e.timestampMs, d["originalProfileName"] as? String, (d["originalPercentage"] as? Number)?.toInt() ?: 100,
                 hours(d["originalTimeshift"]), (d["originalDuration"] as? Number)?.toLong() ?: 0L, steps, EffectiveProfile.Source.EFFECTIVE_RECORD,
+                ProfileSettings.fromJson(d["profileJson"] as? String),
             )
         }
         return out.sortedBy { it.startMs }
@@ -152,6 +158,11 @@ class ProfileResolver(private val entries: List<EffectiveProfile>, private val u
 
     fun at(timeMs: Long): EffectiveProfile? = ProfileTimeline.activeAt(sortedEntries, timeMs)
         ?: fallbacks.getOrPut(uploaded.sortedBy { it.startMs }.lastOrNull { it.startMs <= timeMs }?.startMs ?: -1L) { ProfileTimeline.fallback(uploaded, timeMs) }
+
+    /** Sensitivity and carb ratio of the profile in force at [timeMs], or of the newest uploaded profile before it. */
+    fun settingsAt(timeMs: Long): ProfileSettings =
+        at(timeMs)?.settings?.takeIf { it.isf.isNotEmpty() || it.carbRatio.isNotEmpty() }
+            ?: ProfileSettings.of(uploaded.sortedBy { it.startMs }.lastOrNull { it.startMs <= timeMs } ?: uploaded.minByOrNull { it.startMs })
 
     fun basalAt(timeMs: Long, zone: ZoneId): Double? = at(timeMs)?.let { ProfileTimeline.rateAt(it.basal, timeMs, zone) }
 

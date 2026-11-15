@@ -102,3 +102,20 @@ class ProfileSettingsTest {
         assertEquals("Profile carb ratio 10.0 -> 9.0 g/U", s.detail)
     }
 }
+
+class ProfileSettingsModifierTest {
+    @Test fun percentageDividesSensitivityAndCarbRatio() {
+        val s = ProfileSettings(listOf(BasalStep(0, 100.0)), listOf(BasalStep(0, 10.0))).modified(120, 0)
+        assertEquals(83.333, s.isfMgdlAt(3)!!, 0.01); assertEquals(8.333, s.carbRatioAt(3)!!, 0.01)
+    }
+
+    @Test fun jsonBodyIsReadWithItsOwnUnits() {
+        val j = """{"units":"mmol","sens":[{"timeAsSeconds":0,"value":10}],"carbratio":[{"timeAsSeconds":0,"value":6}]}"""
+        assertEquals(180.0, ProfileSettings.fromJson(j).isfMgdlAt(0)!!, 1e-9)
+    }
+}
+
+class ProfileSettingsUnitsGuessTest {
+    @Test fun missingUnitsWithSmallSensitivityIsTreatedAsMmol() =
+        assertEquals(180.0, ProfileSettings.fromJson("""{"sens":[{"timeAsSeconds":0,"value":10}]}""").isfMgdlAt(0)!!, 1e-9)
+}
