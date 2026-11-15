@@ -109,4 +109,16 @@
     <string name="empty_days_treatments">Treatments (boluses, carbs, temp basals)</string>
     <string name="empty_days_iob">Loop insulin on board</string>
     <string name="empty_days_glucose">Glucose</string>
+    <string name="basal_title">Loop basal vs profile basal</string>
+    <string name="basal_intro">How often the closed loop ran a higher or lower basal than your profile schedule, from the temp basals it set. Percentages are of the time a temp basal was running. The profile is the one uploaded for that day; profile percentage and time shift are not applied (your Profile Switch records so far are all 100%).</string>
+    <string name="basal_coverage">Loop data covers %1$s%% of this period.</string>
+    <string name="basal_low_coverage">Loop data covers only %1$s%% of this period (temp basals are missing for the rest), so these numbers describe part of it.</string>
+    <string name="basal_overall">All day</string>
+    <string name="basal_above">Above profile: %1$s%% of the time</string>
+    <string name="basal_below">Below profile: %1$s%% of the time</string>
+    <string name="basal_zero">(including %1$s%% at 0 U/h)</string>
+    <string name="basal_at">At profile: %1$s%% of the time</string>
+    <string name="basal_average">Average %1$s U/h vs profile %2$s U/h (%3$s%%)</string>
+    <string name="basal_per_day">Basal insulin per day: %1$s U vs %2$s U on profile</string>
+    <string name="basal_temp_count">%1$d temp basals (%2$s a day): %3$d above, %4$d below, %5$d at profile when set</string>
 </resources>
