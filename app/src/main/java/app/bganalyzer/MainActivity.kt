@@ -14,6 +14,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import app.bganalyzer.ui.BackupScreen
@@ -91,13 +92,17 @@ class MainActivity : ComponentActivity() {
                                         if (i == 2) { patterns.refresh(); glucose.syncIfStale(patterns.state.value.days) }
                                     },
                                     icon = {},
-                                    label = { Text(stringResource(label)) },
+                                    // one line even at a large font size: five tabs share the width
+                                    label = { Text(stringResource(label), maxLines = 1, softWrap = false, style = androidx.compose.material3.MaterialTheme.typography.labelSmall) },
                                     alwaysShowLabel = true,
                                 )
                             }
                         }
                     },
                 ) { inner ->
+                // Each tab keeps its saved state (scroll position, typed text) while another tab is shown.
+                val tabState = rememberSaveableStateHolder()
+                tabState.SaveableStateProvider(tab) {
                 if (tab == 0) {
                     Box(Modifier.padding(inner)) {
                         GlucoseScreen(
@@ -113,8 +118,9 @@ class MainActivity : ComponentActivity() {
                 } else if (tab == 1) {
                     val autotuneState by autotune.state.collectAsState()
                     val insulinPeak by autotune.peak.collectAsState()
+                    val autotuneDays by autotune.days.collectAsState()
                     Box(Modifier.padding(inner)) {
-                        AutotuneScreen(autotuneState, glucoseState.unit, insulinPeak, syncState, autotune::setPeak, autotune::run, autotune::clear)
+                        AutotuneScreen(autotuneState, glucoseState.unit, autotuneDays, autotune::setDays, insulinPeak, syncState, autotune::setPeak, autotune::run, autotune::clear)
                     }
                 } else if (tab == 2) {
                     val patternsState by patterns.state.collectAsState()
@@ -192,6 +198,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                 )
+                }
                 }
                 }
             }

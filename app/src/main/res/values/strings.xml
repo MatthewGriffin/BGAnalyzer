@@ -1,7 +1,10 @@
 <resources>
     <string name="app_name">BGAnalyzer</string>
-    <string name="connection_title">Nightscout database</string>
-    <string name="connection_intro">Enter the address of the MongoDB database your Nightscout uses. A read-only database user is enough. The address is stored encrypted on this phone.</string>
+    <string name="connection_title">Nightscout connection</string>
+    <string name="connection_intro">Choose where the app reads your Nightscout data from. What you enter is stored encrypted on this phone.</string>
+    <string name="excluded_default_note">Pump failure</string>
+    <string name="no_insulin_note">No insulin records (pump off?)</string>
+    <string name="connection_mongo_intro">Enter the address of the MongoDB database your Nightscout uses. A read-only database user is enough.</string>
     <string name="connection_uri_label">MongoDB address</string>
     <string name="connection_uri_placeholder">mongodb+srv://user:password@cluster.mongodb.net</string>
     <string name="connection_database_label">Database name</string>
@@ -148,7 +151,7 @@
     <string name="autotune_run">Run autotune</string>
     <string name="autotune_running">Replaying day %1$d of %2$d</string>
     <string name="autotune_days_used">%1$d of %2$d days had enough data and were used.</string>
-    <string name="autotune_skipped">Skipped: %1$s</string>
+    <string name="autotune_skipped">Skipped</string>
     <string name="autotune_isf_cr">Sensitivity and carb ratio</string>
     <string name="autotune_isf">Sensitivity (ISF): %1$s -> %2$s %3$s per unit</string>
     <string name="autotune_cr">Carb ratio: %1$s -> %2$s g per unit</string>

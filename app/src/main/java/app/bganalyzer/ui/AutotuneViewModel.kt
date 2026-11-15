@@ -43,6 +43,15 @@ class AutotuneViewModel(app: Application) : AndroidViewModel(app) {
     private val _peak = MutableStateFlow(prefs.getInt(KEY_PEAK, LocalInsulin.DEFAULT_PEAK).takeIf { it in INSULIN_PEAKS } ?: LocalInsulin.DEFAULT_PEAK)
     val peak: StateFlow<Int> = _peak
 
+    /** Days to replay. Kept here so the choice survives tab switches and always matches the result shown. */
+    private val _days = MutableStateFlow(prefs.getInt(KEY_DAYS, 14).takeIf { it in DAY_CHOICES } ?: 14)
+    val days: StateFlow<Int> = _days
+
+    fun setDays(value: Int) {
+        _days.value = value
+        prefs.edit().putInt(KEY_DAYS, value).apply()
+    }
+
     fun setPeak(minutes: Int) {
         _peak.value = minutes
         prefs.edit().putInt(KEY_PEAK, minutes).apply()
@@ -67,7 +76,9 @@ class AutotuneViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         const val KEY_PEAK = "insulin_peak"
+        const val KEY_DAYS = "autotune_days"
         /** Peak times AAPS uses: rapid-acting 75, ultra-rapid (Fiasp) 55, Lyumjev 45. */
+        val DAY_CHOICES = listOf(5, 7, 14, 21, 30)
         val INSULIN_PEAKS = listOf(75, 55, 45)
         private const val HOUR_MS = 3_600_000L
         const val DAY_MS = 24 * HOUR_MS

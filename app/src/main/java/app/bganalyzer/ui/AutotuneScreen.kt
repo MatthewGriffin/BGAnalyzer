@@ -18,10 +18,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -30,11 +26,10 @@ import androidx.compose.ui.unit.dp
 import app.bganalyzer.R
 import app.bganalyzer.autotune.AutotuneAdvice
 import app.bganalyzer.autotune.AutotuneAdvisor
+import app.bganalyzer.autotune.SkippedSummary
 import app.bganalyzer.domain.GlucoseUnit
 import app.bganalyzer.domain.format
 import java.util.Locale
-
-private val AUTOTUNE_DAYS = listOf(5, 7, 14, 21, 30)
 
 /**
  * Autotune (ported from AndroidAPS) as the app's main advice. Nothing is changed in any profile: the tables show what
@@ -45,26 +40,23 @@ private val AUTOTUNE_DAYS = listOf(5, 7, 14, 21, 30)
 fun AutotuneScreen(
     state: AutotuneState,
     unit: GlucoseUnit,
+    days: Int,
+    onDays: (Int) -> Unit,
     peak: Int,
     sync: SyncState,
     onPeak: (Int) -> Unit,
     onRun: (Int) -> Unit,
     onClear: () -> Unit,
 ) {
-    var days by remember { mutableIntStateOf(14) }
-    Scaffold(contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0), topBar = { TopAppBar(title = { Text(stringResource(R.string.autotune_title)) }) }) { padding ->
-        Column(
-            Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+    ScreenScaffold(stringResource(R.string.autotune_title)) {
             Text(stringResource(R.string.autotune_intro), style = MaterialTheme.typography.bodySmall)
             if (sync is SyncState.Running) Text(stringResource(R.string.autotune_syncing), color = MaterialTheme.colorScheme.tertiary)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Dropdown(
                     label = stringResource(R.string.autotune_days_label),
-                    options = AUTOTUNE_DAYS, selected = days,
+                    options = AutotuneViewModel.DAY_CHOICES, selected = days,
                     text = { stringResource(R.string.range_days, it) },
-                    onSelect = { days = it }, modifier = Modifier.weight(1f),
+                    onSelect = onDays, modifier = Modifier.weight(1f),
                 )
                 Dropdown(
                     label = stringResource(R.string.autotune_insulin_short_label),
@@ -81,7 +73,6 @@ fun AutotuneScreen(
                 is AutotuneState.Done -> AutotuneResultCards(state, unit, onClear)
             }
         }
-    }
 }
 
 private fun rate(v: Double) = String.format(Locale.getDefault(), "%.2f", v)
@@ -112,7 +103,10 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
     val a: AutotuneAdvice = s.advice
     Text(stringResource(R.string.autotune_days_used, a.daysTuned, s.days), style = MaterialTheme.typography.bodySmall)
     if (s.result.skipped.isNotEmpty()) {
-        Text(stringResource(R.string.autotune_skipped, s.result.skipped.joinToString { "${it.date} (${it.reason})" }), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary)
+        Column {
+            Text(stringResource(R.string.autotune_skipped), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
+            SkippedSummary.lines(s.result.skipped).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary) }
+        }
     }
 
     // Insulin sensitivity and carb ratio
@@ -152,7 +146,8 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
                 w, header = true,
             )
             a.hours.forEach { h ->
-                val now = AutotuneAdvisor.roundToPumpStep(h.current)
+                // the profile as it is; only the suggestion is rounded to what a pump accepts
+                val now = h.current
                 val sug = AutotuneAdvisor.roundToPumpStep(h.suggested)
                 val change = if (now > 0) (sug / now - 1) * 100 else 0.0
                 TableRow(
@@ -161,7 +156,7 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
                     note = h.heldReason?.let { stringResource(R.string.autotune_held, rate(AutotuneAdvisor.roundToPumpStep(h.tuned)), it) },
                 )
             }
-            val totalNow = a.hours.sumOf { AutotuneAdvisor.roundToPumpStep(it.current) }
+            val totalNow = a.hours.sumOf { it.current }
             val totalSug = a.hours.sumOf { AutotuneAdvisor.roundToPumpStep(it.suggested) }
             TableRow(listOf(stringResource(R.string.autotune_total), rate(totalNow), rate(totalSug), String.format(Locale.getDefault(), "%+.0f%%", if (totalNow > 0) (totalSug / totalNow - 1) * 100 else 0.0), ""), w, header = true)
             Text(stringResource(R.string.autotune_basal_note), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
