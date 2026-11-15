@@ -138,18 +138,6 @@ private fun TreatmentsSection(state: GlucoseUiState) {
     fun one(v: Double) = String.format(Locale.getDefault(), "%.1f", v)
     Text(stringResource(R.string.treat_meals, state.mealCount, one(state.carbsTotal / days)))
     Text(stringResource(R.string.treat_insulin, one(state.bolusInsulinTotal), one(state.bolusInsulinTotal / days)))
-    Text(stringResource(R.string.treat_recent), style = MaterialTheme.typography.titleSmall)
-    val fmt = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT) }
-    state.treatments.filter { (it.carbs ?: 0.0) > 0 || (it.insulin ?: 0.0) > 0 }.takeLast(20).reversed().forEach { t ->
-        val parts = buildList {
-            t.carbs?.takeIf { it > 0 }?.let { add(stringResource(R.string.treat_carbs, one(it))) }
-            t.insulin?.takeIf { it > 0 }?.let { add(stringResource(if (t.isSmb) R.string.treat_smb else R.string.treat_units, String.format(Locale.getDefault(), "%.2f", it))) }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(fmt.format(java.util.Date(t.timestampMs)), style = MaterialTheme.typography.bodyMedium)
-            Text(parts.joinToString("  "), style = MaterialTheme.typography.bodyMedium)
-        }
-    }
 }
 
 @Composable
