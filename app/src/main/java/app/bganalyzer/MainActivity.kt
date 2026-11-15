@@ -18,6 +18,8 @@ import androidx.compose.ui.res.stringResource
 import app.bganalyzer.ui.BackupScreen
 import app.bganalyzer.ui.BackupViewModel
 import app.bganalyzer.ui.GlucoseScreen
+import app.bganalyzer.ui.PatternsScreen
+import app.bganalyzer.ui.PatternsViewModel
 import app.bganalyzer.ui.GlucoseViewModel
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,6 +41,7 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     private val glucose: GlucoseViewModel by viewModels()
     private val backup: BackupViewModel by viewModels()
+    private val patterns: PatternsViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,10 +65,10 @@ class MainActivity : ComponentActivity() {
                 Scaffold(
                     bottomBar = {
                         NavigationBar {
-                            listOf(R.string.tab_glucose, R.string.tab_connection, R.string.tab_backup).forEachIndexed { i, label ->
+                            listOf(R.string.tab_glucose, R.string.tab_patterns, R.string.tab_connection, R.string.tab_backup).forEachIndexed { i, label ->
                                 NavigationBarItem(
                                     selected = tab == i,
-                                    onClick = { tab = i; if (i == 0) glucose.refreshWindow() },
+                                    onClick = { tab = i; if (i == 0) glucose.refreshWindow(); if (i == 1) patterns.refresh() },
                                     icon = {},
                                     label = { Text(stringResource(label)) },
                                     alwaysShowLabel = true,
@@ -85,7 +88,12 @@ class MainActivity : ComponentActivity() {
                             onSync = glucose::sync,
                         )
                     }
-                } else if (tab == 2) {
+                } else if (tab == 1) {
+                    val patternsState by patterns.state.collectAsState()
+                    Box(Modifier.padding(inner)) {
+                        PatternsScreen(patternsState, glucoseState.unit, patterns::setDays, patterns::setBlockHours)
+                    }
+                } else if (tab == 3) {
                     Box(Modifier.padding(inner)) {
                         BackupScreen(backupState, onSave = backup::save, onRestore = backup::restore)
                     }

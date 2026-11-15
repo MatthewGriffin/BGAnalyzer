@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.bganalyzer.R
 import app.bganalyzer.data.AppDatabase
+import app.bganalyzer.data.TreatmentEntity
+import app.bganalyzer.domain.PostMeal
 import app.bganalyzer.domain.GlucoseUnit
 import app.bganalyzer.domain.TimeInRange
 import app.bganalyzer.mongo.ConnectionErrors
@@ -40,6 +42,12 @@ data class GlucoseUiState(
     val fromMs: Long = 0,
     val toMs: Long = 0,
     val unit: GlucoseUnit = GlucoseUnit.MMOL,
+    /** Valid treatments in the period, oldest first. */
+    val treatments: List<TreatmentEntity> = emptyList(),
+    val mealCount: Int = 0,
+    val carbsTotal: Double = 0.0,
+    /** All insulin from bolus records in the period, including automatic micro-boluses. Basal is not included. */
+    val bolusInsulinTotal: Double = 0.0,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -59,9 +67,15 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
         .flatMapLatest { (d, u) ->
             val to = System.currentTimeMillis()
             val from = to - d * DAY_MS
-            dao.observeSince(from).map { rows ->
+            combine(dao.observeSince(from), db.treatmentDao().observeValidSince(from)) { rows, treatments ->
                 val points = rows.map { ChartPoint(it.timestampMs, it.mgdl) }
-                GlucoseUiState(d, points, TimeInRange.of(points.map { it.mgdl }), from, to, u)
+                val meals = PostMeal.meals(treatments)
+                GlucoseUiState(
+                    d, points, TimeInRange.of(points.map { it.mgdl }), from, to, u, treatments,
+                    mealCount = meals.size,
+                    carbsTotal = meals.sumOf { it.carbs },
+                    bolusInsulinTotal = treatments.sumOf { (it.insulin ?: 0.0).coerceAtLeast(0.0) },
+                )
             }
         }
         .flowOn(Dispatchers.Default)

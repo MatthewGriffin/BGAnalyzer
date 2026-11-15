@@ -94,7 +94,7 @@ fun GlucoseScreen(
             if (state.points.isEmpty()) {
                 Text(stringResource(R.string.chart_no_data))
             } else {
-                GlucoseChart(state.points, state.fromMs, state.toMs, unit, ranges)
+                GlucoseChart(state.points, state.fromMs, state.toMs, unit, state.treatments, ranges)
                 val tir = state.timeInRange
                 val coverage = coveragePercent(tir.count, state.toMs - state.fromMs)
                 Text(stringResource(R.string.tir_title), style = MaterialTheme.typography.titleMedium)
@@ -109,6 +109,33 @@ fun GlucoseScreen(
                     Text(stringResource(R.string.stat_low_coverage), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
             }
+            TreatmentsSection(state)
+        }
+    }
+}
+
+@Composable
+private fun TreatmentsSection(state: GlucoseUiState) {
+    Text(stringResource(R.string.treat_title), style = MaterialTheme.typography.titleMedium)
+    if (state.treatments.isEmpty()) {
+        Text(stringResource(R.string.treat_none))
+        return
+    }
+    val days = state.days.toDouble()
+    fun one(v: Double) = String.format(Locale.getDefault(), "%.1f", v)
+    Text(stringResource(R.string.treat_meals, state.mealCount, one(state.carbsTotal / days)))
+    Text(stringResource(R.string.treat_insulin, one(state.bolusInsulinTotal), one(state.bolusInsulinTotal / days)))
+    Text(stringResource(R.string.treat_legend), style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(R.string.treat_recent), style = MaterialTheme.typography.titleSmall)
+    val fmt = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT) }
+    state.treatments.filter { (it.carbs ?: 0.0) > 0 || (it.insulin ?: 0.0) > 0 }.takeLast(20).reversed().forEach { t ->
+        val parts = buildList {
+            t.carbs?.takeIf { it > 0 }?.let { add(stringResource(R.string.treat_carbs, one(it))) }
+            t.insulin?.takeIf { it > 0 }?.let { add(stringResource(if (t.isSmb) R.string.treat_smb else R.string.treat_units, String.format(Locale.getDefault(), "%.2f", it))) }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(fmt.format(java.util.Date(t.timestampMs)), style = MaterialTheme.typography.bodyMedium)
+            Text(parts.joinToString("  "), style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -137,7 +164,7 @@ private fun TirRow(label: String, percent: Double, color: Color) {
 /** A choice between options is always a dropdown in this app. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun <T> Dropdown(
+internal fun <T> Dropdown(
     label: String,
     options: List<T>,
     selected: T,
