@@ -96,7 +96,25 @@ class NightscoutSync(private val db: AppDatabase, private val nowMs: () -> Long 
             fetched += batched(mongo.getCollection("treatments").find(filter), TreatmentMapper::treatment, { dao.upsertAll(it) }, progress)
             markCovered(TREATMENTS, chunk)
         }
+        fetched += profileInForceAtStart(mongo, period)
         return Part(fetched, spans.size)
+    }
+
+    /**
+     * The profile active at the start of the period was set by a switch before it, which the period's own requests
+     * do not reach. If none is stored from before the period, ask for the latest switch and its effective records.
+     */
+    private suspend fun profileInForceAtStart(mongo: MongoDatabase, period: Span): Int {
+        val dao = db.treatmentDao()
+        if (dao.profileEvents().any { it.timestampMs <= period.startMs }) return 0
+        val filter = Filters.and(
+            Filters.lte("date", period.startMs),
+            Filters.or(Filters.eq("eventType", "Profile Switch"), Filters.and(Filters.eq("eventType", "Note"), Filters.exists("profileJson"))),
+        )
+        return batched(
+            mongo.getCollection("treatments").find(filter).sort(Sorts.descending("date")).limit(6),
+            TreatmentMapper::treatment, { dao.upsertAll(it) }, {},
+        )
     }
 
     private suspend fun iob(mongo: MongoDatabase, period: Span, now: Long, progress: (Int) -> Unit): Part {

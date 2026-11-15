@@ -45,7 +45,7 @@ fun BackupScreen(state: BackupState, onSave: (android.net.Uri, String) -> Unit, 
     }
     val valid = passphrase.length >= BackupCodec.MIN_PASSPHRASE_LENGTH
     val busy = state == BackupState.Working
-    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.backup_title)) }) }) { padding ->
+    Scaffold(contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0), topBar = { TopAppBar(title = { Text(stringResource(R.string.backup_title)) }) }) { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),

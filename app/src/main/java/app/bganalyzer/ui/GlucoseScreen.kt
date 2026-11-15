@@ -51,7 +51,7 @@ fun GlucoseScreen(
 ) {
     val ranges = GlucoseRanges()
     val unit = state.unit
-    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.glucose_title)) }) }) { padding ->
+    Scaffold(contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0), topBar = { TopAppBar(title = { Text(stringResource(R.string.glucose_title)) }) }) { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),

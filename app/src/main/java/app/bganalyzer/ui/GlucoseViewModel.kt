@@ -14,6 +14,9 @@ import app.bganalyzer.sync.Span
 import app.bganalyzer.sync.SyncPlanner
 import app.bganalyzer.domain.BasalSegment
 import app.bganalyzer.domain.BasalTimeline
+import app.bganalyzer.domain.EffectiveProfile
+import app.bganalyzer.domain.ProfileResolver
+import app.bganalyzer.domain.ProfileTimeline
 import app.bganalyzer.data.TreatmentEntity
 import app.bganalyzer.domain.PostMeal
 import app.bganalyzer.domain.GlucoseUnit
@@ -66,6 +69,8 @@ data class GlucoseUiState(
     val unsyncedMs: Long = 0,
     /** Days Nightscout returned (almost) nothing for, although the app asked. */
     val emptyDays: List<EmptyRange> = emptyList(),
+    /** Every profile change known (switches with their modifier), oldest first; the chart marks those inside the period. */
+    val profiles: List<EffectiveProfile> = emptyList(),
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -92,11 +97,12 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
             // A temp basal that started before the window can still be running at its start, so look back 12 hours.
             combine(
                 dao.observeSince(from), db.treatmentDao().observeValidSince(from - BASAL_LOOKBACK_MS),
-                db.iobDao().observeSince(from), db.coverageDao().observeAll(),
-            ) { rows, all, iob, coverage ->
+                db.iobDao().observeSince(from), db.coverageDao().observeAll(), db.treatmentDao().observeProfileEvents(),
+            ) { rows, all, iob, coverage, profileEvents ->
                 val treatments = all.filter { it.timestampMs >= from }
                 val meals = PostMeal.meals(treatments)
                 val profiles = db.profileDao().all()
+                val entries = ProfileTimeline.entries(profileEvents)
                 val zone = profiles.lastOrNull()?.timezone?.let { runCatching { java.time.ZoneId.of(it) }.getOrNull() }
                     ?: java.time.ZoneId.systemDefault()
                 GlucoseUiState(
@@ -104,7 +110,8 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
                     mealCount = meals.size,
                     carbsTotal = meals.sumOf { it.carbs },
                     bolusInsulinTotal = treatments.sumOf { (it.insulin ?: 0.0).coerceAtLeast(0.0) },
-                    basal = BasalTimeline.build(all, profiles, from, to, zone),
+                    basal = BasalTimeline.build(all, ProfileResolver(entries, profiles), from, to, zone),
+                    profiles = entries,
                     iob = iob,
                     unsyncedMs = SyncPlanner.unsyncedMs(coverage.map { it.source to Span(it.startMs, it.endMs) }, Span(from, to)),
                     emptyDays = run {

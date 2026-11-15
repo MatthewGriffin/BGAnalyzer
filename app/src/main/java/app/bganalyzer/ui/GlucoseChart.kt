@@ -36,6 +36,7 @@ import app.bganalyzer.R
 import app.bganalyzer.data.GlucoseReadingEntity
 import app.bganalyzer.data.IobSampleEntity
 import app.bganalyzer.domain.BasalSegment
+import app.bganalyzer.domain.EffectiveProfile
 import app.bganalyzer.domain.GlucoseRanges
 import app.bganalyzer.domain.GlucoseUnit
 import app.bganalyzer.domain.Moment
@@ -52,6 +53,7 @@ private val BOLUS_COLOR = Color(0xFF3B6FD4)
 private val SMB_COLOR = Color(0xFF8DB0F0)
 private val CARB_COLOR = Color(0xFFE08A1E)
 private val IOB_COLOR = Color(0xFF8E4FD0)
+private val PROFILE_COLOR = Color(0xFFB08900)
 /** IOB samples further apart than this are drawn as a gap. */
 private const val IOB_GAP_MS = 60 * 60 * 1000L
 
@@ -78,11 +80,11 @@ fun GlucoseCharts(state: GlucoseUiState, ranges: GlucoseRanges = GlucoseRanges()
             },
         ) {
             val overlaid = state.layout == ChartLayout.OVERLAID
-            GlucoseChart(state.points, state.fromMs, state.toMs, state.unit, state.treatments, state.basal, state.iob, overlaid, selected, ranges)
+            GlucoseChart(state.points, state.fromMs, state.toMs, state.unit, state.treatments, state.basal, state.iob, state.profiles, overlaid, selected, ranges)
             if (!overlaid) InsulinPanel(state, selected)
         }
         // With nothing touched the card describes right now (the end of the chart).
-        val moment = Moment.at(selected ?: (state.toMs - 1), state.points, state.treatments, state.basal, state.iob)
+        val moment = Moment.at(selected ?: (state.toMs - 1), state.points, state.treatments, state.basal, state.iob, state.profiles)
         MomentCard(
             moment, state.unit, isNow = selected == null, latest = state.points.lastOrNull(),
             onBackToNow = { selected = null },
@@ -90,7 +92,8 @@ fun GlucoseCharts(state: GlucoseUiState, ranges: GlucoseRanges = GlucoseRanges()
         if (selected == null) Text(stringResource(R.string.chart_touch_hint), style = MaterialTheme.typography.bodySmall)
         Text(
             stringResource(if (state.layout == ChartLayout.OVERLAID) R.string.chart_legend_overlaid else R.string.chart_legend) +
-                if (state.layout == ChartLayout.OVERLAID && state.iob.isNotEmpty()) " " + stringResource(R.string.chart_legend_iob) else "",
+                if (state.layout == ChartLayout.OVERLAID && state.iob.isNotEmpty()) " " + stringResource(R.string.chart_legend_iob) else "" +
+                if (state.profiles.any { it.startMs in state.fromMs..state.toMs }) " " + stringResource(R.string.chart_legend_profile) else "",
             style = MaterialTheme.typography.bodySmall,
         )
     }
@@ -135,6 +138,7 @@ private fun MomentCard(
                     String.format(Locale.getDefault(), "%.2f", basal.rateUph),
                 ),
             )
+            m.profile?.let { Text(stringResource(R.string.moment_profile, it.label())) }
             val iobSample = m.iob
             Text(
                 when {
@@ -163,6 +167,7 @@ fun GlucoseChart(
     treatments: List<app.bganalyzer.data.TreatmentEntity>,
     basal: List<BasalSegment>,
     iob: List<IobSampleEntity>,
+    profileChanges: List<EffectiveProfile>,
     /** True: basal and markers are drawn on the glucose chart itself, like AAPS. False: only carb dots; insulin has its own panel. */
     overlay: Boolean,
     selectedMs: Long?,
@@ -297,6 +302,24 @@ fun GlucoseChart(
                         drawText(m, topLeft = Offset((px - m.size.width / 2f).coerceIn(left, size.width - m.size.width), (cy + tri).coerceAtMost(h - m.size.height)))
                     }
                 }
+            }
+        }
+        // Profile changes, like the notes AAPS puts on its chart: a dashed line, and the name and modifier when there is room.
+        val dash = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))
+        val notes = toMs - fromMs <= 7L * 24 * 60 * 60 * 1000
+        var noteRow = 0
+        for (pc in profileChanges) {
+            if (pc.startMs !in fromMs..toMs) continue
+            val px = x(pc.startMs)
+            drawLine(PROFILE_COLOR, Offset(px, 0f), Offset(px, h), 1.2.dp.toPx(), pathEffect = dash)
+            if (pc.isTemporary && pc.endMs <= toMs) {
+                drawRect(PROFILE_COLOR.copy(alpha = 0.10f), Offset(px, 0f), Size(x(pc.endMs) - px, h))
+            }
+            if (notes) {
+                val m = measurer.measure(pc.label(), TextStyle(fontSize = 10.sp, color = PROFILE_COLOR))
+                val tx = (px + 3.dp.toPx()).coerceAtMost(size.width - m.size.width)
+                drawText(m, topLeft = Offset(tx, 2.dp.toPx() + (noteRow % 2) * m.size.height))
+                noteRow++
             }
         }
         drawCursor(selectedMs, ::x, cursor, 0f, h, fromMs, toMs)

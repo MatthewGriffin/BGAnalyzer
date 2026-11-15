@@ -26,6 +26,8 @@ class FakeTreatmentDao(initial: List<app.bganalyzer.data.TreatmentEntity> = empt
     override suspend fun newestTimestamp() = rows.values.maxOfOrNull { it.timestampMs }
     override suspend fun newestServerModified() = rows.values.mapNotNull { it.srvModifiedMs }.maxOrNull()
     override suspend fun validBetween(fromMs: Long, toMs: Long) = all().filter { it.valid && it.timestampMs in fromMs until toMs }
+    override fun observeProfileEvents(): Flow<List<app.bganalyzer.data.TreatmentEntity>> = flowOf(rows.values.filter { app.bganalyzer.domain.ProfileTimeline.isProfileEvent(it) })
+    override suspend fun profileEvents() = rows.values.filter { app.bganalyzer.domain.ProfileTimeline.isProfileEvent(it) }.sortedBy { it.timestampMs }
     override fun observeValidSince(fromMs: Long): Flow<List<app.bganalyzer.data.TreatmentEntity>> = flowOf(rows.values.filter { it.valid && it.timestampMs >= fromMs })
 }
 

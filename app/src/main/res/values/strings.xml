@@ -80,7 +80,7 @@
     <string name="patterns_meal_low4h">Low within 4 hours after: %1$d of %2$d meals</string>
     <string name="patterns_no_data">No readings in this period. Sync to load them.</string>
     <string name="chart_touch_hint">This is right now. Touch and slide a finger across the chart to see any earlier moment.</string>
-    <string name="chart_legend">Top: glucose, with orange dots for carbs (up to 14 days). Bottom: basal in teal (lighter where it is the profile schedule, which ignores profile percentage and time shift) and insulin boluses as blue bars (lighter for automatic micro-boluses), each with its own scale.</string>
+    <string name="chart_legend">Top: glucose, with orange dots for carbs (up to 14 days). Bottom: basal in teal (lighter where it is the profile in force, with its percentage and time shift applied) and insulin boluses as blue bars (lighter for automatic micro-boluses), each with its own scale.</string>
     <string name="moment_glucose">Glucose %1$s %2$s</string>
     <string name="moment_no_reading">No glucose reading near this time</string>
     <string name="moment_basal_temp">Basal %1$s U/h (temp basal)</string>
@@ -96,7 +96,7 @@
     <string name="layout_label">Chart layout</string>
     <string name="layout_overlaid">Overlaid</string>
     <string name="layout_separate">Separate</string>
-    <string name="chart_legend_overlaid">One chart: glucose line, basal as the teal area along the bottom (its own scale, labelled at the top of the area; lighter where it is the profile schedule, which ignores profile percentage and time shift), carbs as orange circles and insulin boluses as blue triangles on the glucose line (smaller and lighter for automatic micro-boluses). Amounts are written next to them for periods up to 2 days.</string>
+    <string name="chart_legend_overlaid">One chart: glucose line, basal as the teal area along the bottom (its own scale, labelled at the top of the area; lighter where it is the profile in force, with its percentage and time shift applied), carbs as orange circles and insulin boluses as blue triangles on the glucose line (smaller and lighter for automatic micro-boluses). Amounts are written next to them for periods up to 2 days.</string>
     <string name="sync_unsynced_notice">Part of this period has not been synced yet. Press Sync now to fill it in; only the missing part is requested.</string>
     <string name="moment_iob">Insulin on board %1$s U (basal %2$s U)</string>
     <string name="moment_iob_only">Insulin on board %1$s U</string>
@@ -110,7 +110,7 @@
     <string name="empty_days_iob">Loop insulin on board</string>
     <string name="empty_days_glucose">Glucose</string>
     <string name="basal_title">Loop basal vs profile basal</string>
-    <string name="basal_intro">How often the closed loop ran a higher or lower basal than your profile schedule, from the temp basals it set. Percentages are of the time a temp basal was running. The profile is the one uploaded for that day; profile percentage and time shift are not applied (your Profile Switch records so far are all 100%).</string>
+    <string name="basal_intro">How often the closed loop ran a higher or lower basal than your profile schedule, from the temp basals it set. Percentages are of the time a temp basal was running. The baseline is the profile that was in force at each moment, including any percentage and time shift (AAPS switch records).</string>
     <string name="basal_coverage">Loop data covers %1$s%% of this period.</string>
     <string name="basal_low_coverage">Loop data covers only %1$s%% of this period (temp basals are missing for the rest), so these numbers describe part of it.</string>
     <string name="basal_overall">All day</string>
@@ -121,4 +121,9 @@
     <string name="basal_average">Average %1$s U/h vs profile %2$s U/h (%3$s%%)</string>
     <string name="basal_per_day">Basal insulin per day: %1$s U vs %2$s U on profile</string>
     <string name="basal_temp_count">%1$d temp basals (%2$s a day): %3$d above, %4$d below, %5$d at profile when set</string>
+    <string name="moment_profile">Profile: %1$s</string>
+    <string name="chart_legend_profile">Dashed amber lines mark profile switches, with the profile name and any percentage or time shift; a lighter band shows how long a temporary switch lasted.</string>
+    <string name="profile_changes_title">Profile switches in this period</string>
+    <string name="profile_changes_none">No profile switches in this period. The comparison uses the profile in force when the period began.</string>
+    <string name="profile_changes_more">%1$d earlier switches not shown.</string>
 </resources>

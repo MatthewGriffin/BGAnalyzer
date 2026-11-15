@@ -42,7 +42,7 @@ fun PatternsScreen(
     onBlockHours: (Int) -> Unit,
     onSync: () -> Unit,
 ) {
-    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.patterns_title)) }) }) { padding ->
+    Scaffold(contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0), topBar = { TopAppBar(title = { Text(stringResource(R.string.patterns_title)) }) }) { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -86,7 +86,7 @@ fun PatternsScreen(
             if (state.zoneName.isNotEmpty()) Text(stringResource(R.string.patterns_timezone, state.zoneName), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.patterns_glucose_title), style = MaterialTheme.typography.titleMedium)
             state.blocks.forEach { BlockCard(it, unit) }
-            state.basal?.let { BasalSection(it) }
+            state.basal?.let { BasalSection(it, state.profileChanges) }
             Text(stringResource(R.string.patterns_meals_title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(R.string.patterns_meals_intro), style = MaterialTheme.typography.bodySmall)
             state.meals.forEach { MealCard(it, unit) }
@@ -149,7 +149,7 @@ private fun signed(v: Double) = String.format(Locale.getDefault(), "%+.0f", v)
 
 /** How often the closed loop ran above or below the profile basal, overall and by time of day. */
 @Composable
-private fun BasalSection(b: BasalComparisonResult) {
+private fun BasalSection(b: BasalComparisonResult, profileChanges: List<app.bganalyzer.domain.EffectiveProfile>) {
     Text(stringResource(R.string.basal_title), style = MaterialTheme.typography.titleMedium)
     Text(stringResource(R.string.basal_intro), style = MaterialTheme.typography.bodySmall)
     if (b.loopCoveragePct < 70) {
@@ -157,6 +157,7 @@ private fun BasalSection(b: BasalComparisonResult) {
     } else {
         Text(stringResource(R.string.basal_coverage, pct(b.loopCoveragePct)), style = MaterialTheme.typography.bodySmall)
     }
+    ProfileChangesCard(profileChanges)
     val o = b.overall
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -197,4 +198,26 @@ private fun BasalLines(s: BasalBlockStats) {
     Text(stringResource(R.string.basal_below, pct(s.belowPct)) + if (s.zeroPct >= 0.5) " " + stringResource(R.string.basal_zero, pct(s.zeroPct)) else "")
     Text(stringResource(R.string.basal_at, pct(s.atPct)))
     Text(stringResource(R.string.basal_average, rate(s.avgActual), rate(s.avgScheduled), signed(s.changePct)))
+}
+
+/** Which profile was switched to and when, with any percentage or time shift, so the comparison above can be read against it. */
+@Composable
+private fun ProfileChangesCard(changes: List<app.bganalyzer.domain.EffectiveProfile>) {
+    val fmt = androidx.compose.runtime.remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT) }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(R.string.profile_changes_title), style = MaterialTheme.typography.titleSmall)
+            if (changes.isEmpty()) {
+                Text(stringResource(R.string.profile_changes_none), style = MaterialTheme.typography.bodySmall)
+            } else {
+                changes.takeLast(15).reversed().forEach {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(fmt.format(java.util.Date(it.startMs)), style = MaterialTheme.typography.bodyMedium)
+                        Text(it.label(), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                if (changes.size > 15) Text(stringResource(R.string.profile_changes_more, changes.size - 15), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
 }

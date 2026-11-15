@@ -4,10 +4,7 @@ import app.bganalyzer.data.ProfileEntity
 import app.bganalyzer.data.TreatmentEntity
 import org.bson.Document
 import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZoneId
-import java.time.ZonedDateTime
 
 /** A stretch of time with one basal rate. [scheduled] is true when it comes from the profile, not a temp basal. */
 data class BasalSegment(val startMs: Long, val endMs: Long, val rateUph: Double, val scheduled: Boolean)
@@ -38,9 +35,13 @@ object BasalTimeline {
      * profile percentage or time-shift, so scheduled stretches can differ from what the pump really ran.
      * [treatments] should reach back far enough (about 12 hours) to include a temp basal running at [fromMs].
      */
+    /** Convenience for callers that only have uploaded profile documents. */
+    fun build(treatments: List<TreatmentEntity>, profiles: List<ProfileEntity>, fromMs: Long, toMs: Long, zone: ZoneId): List<BasalSegment> =
+        build(treatments, ProfileResolver.fromUploaded(profiles), fromMs, toMs, zone)
+
     fun build(
         treatments: List<TreatmentEntity>,
-        profiles: List<ProfileEntity>,
+        resolver: ProfileResolver,
         fromMs: Long,
         toMs: Long,
         zone: ZoneId,
@@ -48,11 +49,11 @@ object BasalTimeline {
         val result = ArrayList<BasalSegment>()
         var cursor = fromMs
         for (seg in tempSegments(treatments, fromMs, toMs)) {
-            if (seg.startMs > cursor) fillScheduled(result, profiles, cursor, seg.startMs, zone)
+            if (seg.startMs > cursor) fillScheduled(result, resolver, cursor, seg.startMs, zone)
             result += seg
             cursor = seg.endMs
         }
-        if (cursor < toMs) fillScheduled(result, profiles, cursor, toMs, zone)
+        if (cursor < toMs) fillScheduled(result, resolver, cursor, toMs, zone)
         return result
     }
 
@@ -72,32 +73,19 @@ object BasalTimeline {
         return out
     }
 
-    private fun fillScheduled(out: MutableList<BasalSegment>, profiles: List<ProfileEntity>, from: Long, to: Long, zone: ZoneId) {
-        if (profiles.isEmpty()) return
-        val sorted = profiles.sortedBy { it.startMs }
-        // Boundaries inside the gap: every schedule step and every profile change.
-        val cuts = sortedSetOf(from, to)
-        sorted.filter { it.startMs in (from + 1) until to }.forEach { cuts.add(it.startMs) }
-        var day: LocalDate = Instant.ofEpochMilli(from).atZone(zone).toLocalDate()
-        val lastDay = Instant.ofEpochMilli(to).atZone(zone).toLocalDate()
-        while (!day.isAfter(lastDay)) {
-            val steps = (sorted.lastOrNull { it.startMs <= from } ?: sorted.first()).let { schedule(it) }
-            for (s in steps) {
-                val ms = ZonedDateTime.of(day, LocalTime.ofSecondOfDay(s.secondsFromMidnight.toLong()), zone).toInstant().toEpochMilli()
-                if (ms in (from + 1) until to) cuts.add(ms)
+    /** Scheduled basal for a gap, sampled each minute in local time so profile switches, modifiers and DST are all respected. */
+    private fun fillScheduled(out: MutableList<BasalSegment>, resolver: ProfileResolver, from: Long, to: Long, zone: ZoneId) {
+        var start = from
+        var rate: Double? = null
+        var t = from
+        while (t < to) {
+            val r = resolver.basalAt(t, zone)
+            if (r != rate) {
+                if (rate != null && t > start) out += BasalSegment(start, t, rate, scheduled = true)
+                start = t; rate = r
             }
-            day = day.plusDays(1)
+            t += 60_000L
         }
-        val points = cuts.toList()
-        for (i in 0 until points.size - 1) {
-            val a = points[i]; val b = points[i + 1]
-            val profile = sorted.lastOrNull { it.startMs <= a } ?: sorted.first()
-            val steps = schedule(profile)
-            if (steps.isEmpty()) continue
-            val sec = Instant.ofEpochMilli(a).atZone(zone).toLocalTime().toSecondOfDay()
-            // Before the first step of the day the previous day's last rate still applies.
-            val rate = (steps.lastOrNull { it.secondsFromMidnight <= sec } ?: steps.last()).rateUph
-            out += BasalSegment(a, b, rate, scheduled = true)
-        }
+        if (rate != null && to > start) out += BasalSegment(start, to, rate, scheduled = true)
     }
 }
