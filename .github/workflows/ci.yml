@@ -24,8 +24,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Run unit tests and build the debug app
-        run: ./gradlew test assembleDebug --continue
+      - name: Run unit tests, build the debug app and compile the on-device tests
+        run: ./gradlew test assembleDebug :app:compileDebugAndroidTestKotlin --continue
 
       - name: Upload test reports
         if: failure()
