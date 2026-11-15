@@ -94,7 +94,7 @@ fun GlucoseScreen(
             if (state.points.isEmpty()) {
                 Text(stringResource(R.string.chart_no_data))
             } else {
-                GlucoseChart(state.points, state.fromMs, state.toMs, unit, state.treatments, ranges)
+                GlucoseCharts(state, ranges)
                 val tir = state.timeInRange
                 val coverage = coveragePercent(tir.count, state.toMs - state.fromMs)
                 Text(stringResource(R.string.tir_title), style = MaterialTheme.typography.titleMedium)
@@ -125,7 +125,6 @@ private fun TreatmentsSection(state: GlucoseUiState) {
     fun one(v: Double) = String.format(Locale.getDefault(), "%.1f", v)
     Text(stringResource(R.string.treat_meals, state.mealCount, one(state.carbsTotal / days)))
     Text(stringResource(R.string.treat_insulin, one(state.bolusInsulinTotal), one(state.bolusInsulinTotal / days)))
-    Text(stringResource(R.string.treat_legend), style = MaterialTheme.typography.bodySmall)
     Text(stringResource(R.string.treat_recent), style = MaterialTheme.typography.titleSmall)
     val fmt = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT) }
     state.treatments.filter { (it.carbs ?: 0.0) > 0 || (it.insulin ?: 0.0) > 0 }.takeLast(20).reversed().forEach { t ->

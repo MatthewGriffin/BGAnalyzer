@@ -1,38 +1,130 @@
 package app.bganalyzer.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import app.bganalyzer.data.TreatmentEntity
+import app.bganalyzer.R
+import app.bganalyzer.data.GlucoseReadingEntity
+import app.bganalyzer.domain.BasalSegment
 import app.bganalyzer.domain.GlucoseRanges
 import app.bganalyzer.domain.GlucoseUnit
+import app.bganalyzer.domain.Moment
 import app.bganalyzer.domain.format
 import java.text.DateFormat
 import java.util.Date
+import java.util.Locale
 
 /** Readings further apart than this are drawn as a gap, not joined by a line. */
 private const val GAP_MS = 20 * 60 * 1000L
+private val AXIS_WIDTH = 40.dp
+private val BASAL_COLOR = Color(0xFF1F9E8F)
+private val BOLUS_COLOR = Color(0xFF3B6FD4)
+private val SMB_COLOR = Color(0xFF8DB0F0)
+private val CARB_COLOR = Color(0xFFE08A1E)
+
+/**
+ * The glucose chart, the insulin panel under it, and a readout for the moment the user touches.
+ * Touching or sliding a finger across either chart moves a vertical line through both and fills the readout.
+ */
+@Composable
+fun GlucoseCharts(state: GlucoseUiState, ranges: GlucoseRanges = GlucoseRanges()) {
+    var selected by remember(state.days) { mutableStateOf<Long?>(null) }
+    val axisPx = with(LocalDensity.current) { AXIS_WIDTH.toPx() }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(
+            Modifier.pointerInput(state.fromMs, state.toMs) {
+                fun at(x: Float) = state.fromMs + ((x - axisPx) / (size.width - axisPx)).coerceIn(0f, 1f) * (state.toMs - state.fromMs)
+                detectTapGestures { selected = at(it.x).toLong() }
+            }.pointerInput(state.fromMs, state.toMs) {
+                fun at(x: Float) = state.fromMs + ((x - axisPx) / (size.width - axisPx)).coerceIn(0f, 1f) * (state.toMs - state.fromMs)
+                // Horizontal only, so swiping up or down over the chart still scrolls the page.
+                detectHorizontalDragGestures(
+                    onDragStart = { selected = at(it.x).toLong() },
+                    onHorizontalDrag = { change, _ -> change.consume(); selected = at(change.position.x).toLong() },
+                )
+            },
+        ) {
+            GlucoseChart(state.points, state.fromMs, state.toMs, state.unit, state.treatments.filter { (it.carbs ?: 0.0) > 0 }.map { it.timestampMs }, selected, ranges)
+            InsulinPanel(state, selected)
+        }
+        val moment = selected?.let { Moment.at(it, state.points, state.treatments, state.basal) }
+        if (moment == null) {
+            Text(stringResource(R.string.chart_touch_hint), style = MaterialTheme.typography.bodySmall)
+        } else {
+            MomentCard(moment, state.unit)
+        }
+        Text(stringResource(R.string.chart_legend), style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun MomentCard(m: app.bganalyzer.domain.MomentSummary, unit: GlucoseUnit) {
+    val fmt = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
+    fun ago(ms: Long): String {
+        val min = ms / 60_000
+        return if (min < 60) "$min min" else "${min / 60} h ${min % 60} min"
+    }
+    fun one(v: Double) = String.format(Locale.getDefault(), "%.1f", v)
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(fmt.format(Date(m.timeMs)), style = MaterialTheme.typography.titleSmall)
+            Text(
+                m.mgdl?.let { stringResource(R.string.moment_glucose, unit.format(it), unit.label) }
+                    ?: stringResource(R.string.moment_no_reading),
+            )
+            val basal = m.basal
+            Text(
+                if (basal == null) stringResource(R.string.moment_no_basal)
+                else stringResource(
+                    if (basal.scheduled) R.string.moment_basal_scheduled else R.string.moment_basal_temp,
+                    String.format(Locale.getDefault(), "%.2f", basal.rateUph),
+                ),
+            )
+            Text(stringResource(R.string.moment_last3h, one(m.carbsLast3h), one(m.bolusLast3h)))
+            m.lastCarbs?.let { Text(stringResource(R.string.moment_last_carbs, one(it.first), ago(it.second))) }
+            m.lastBolus?.let {
+                Text(stringResource(if (it.second) R.string.moment_last_smb else R.string.moment_last_bolus, String.format(Locale.getDefault(), "%.2f", it.first), ago(it.third)))
+            }
+        }
+    }
+}
 
 @Composable
 fun GlucoseChart(
-    points: List<ChartPoint>,
+    points: List<GlucoseReadingEntity>,
     fromMs: Long,
     toMs: Long,
     unit: GlucoseUnit,
-    treatments: List<TreatmentEntity> = emptyList(),
+    carbTimes: List<Long>,
+    selectedMs: Long?,
     ranges: GlucoseRanges = GlucoseRanges(),
     modifier: Modifier = Modifier,
 ) {
@@ -42,20 +134,20 @@ fun GlucoseChart(
     val band = Color(0xFF2E9E5B).copy(alpha = 0.15f)
     val grid = MaterialTheme.colorScheme.outlineVariant
     val danger = MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
+    val cursor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     val dateFormat = DateFormat.getDateInstance(DateFormat.SHORT)
     val timeFormat = DateFormat.getTimeInstance(DateFormat.SHORT)
     val oneDay = toMs - fromMs <= 24 * 60 * 60 * 1000L + 1
 
-    Canvas(modifier.fillMaxWidth().height(240.dp)) {
-        val left = 36.dp.toPx()
+    Canvas(modifier.fillMaxWidth().height(220.dp)) {
+        val left = AXIS_WIDTH.toPx()
         val bottom = 20.dp.toPx()
         val w = size.width - left
         val h = size.height - bottom
-        val top = 0f
         val yMax = maxOf(300.0, points.maxOfOrNull { it.mgdl } ?: 0.0).let { Math.ceil(it / 50) * 50 }
         val yMin = 40.0
         fun x(t: Long) = left + w * ((t - fromMs).toFloat() / (toMs - fromMs).toFloat())
-        fun y(v: Double) = top + h * (1f - ((v - yMin) / (yMax - yMin)).toFloat())
+        fun y(v: Double) = h * (1f - ((v - yMin) / (yMax - yMin)).toFloat())
 
         drawRect(band, Offset(left, y(ranges.highAbove)), Size(w, y(ranges.lowBelow) - y(ranges.highAbove)))
         listOf(ranges.veryLowBelow, ranges.veryHighAbove).forEach {
@@ -63,48 +155,96 @@ fun GlucoseChart(
         }
         listOf(ranges.lowBelow, ranges.highAbove).forEach {
             drawLine(grid, Offset(left, y(it)), Offset(left + w, y(it)), 1.dp.toPx())
-            val label = unit.format(it)
-            val m = measurer.measure(label, labelStyle)
+            val m = measurer.measure(unit.format(it), labelStyle)
             drawText(m, topLeft = Offset(left - m.size.width - 4.dp.toPx(), y(it) - m.size.height / 2f))
         }
-        val xLabelY = top + h + 4.dp.toPx()
+        val xLabelY = h + 4.dp.toPx()
         listOf(fromMs to 0f, toMs to 1f).forEach { (t, anchor) ->
             val label = if (oneDay) timeFormat.format(Date(t)) else dateFormat.format(Date(t))
             val m = measurer.measure(label, labelStyle)
             drawText(m, topLeft = Offset(left + (w - m.size.width) * anchor, xLabelY))
         }
 
-        // Carbs (orange) and insulin boluses (blue) as ticks along the bottom edge. Only for short periods,
-        // where they stay readable.
+        // Carbs as dots along the bottom edge, for periods up to 14 days where they stay readable.
         if (toMs - fromMs <= 14L * 24 * 60 * 60 * 1000) {
-            for (t in treatments) {
-                if (t.timestampMs !in fromMs..toMs) continue
-                val tx = x(t.timestampMs)
-                if ((t.carbs ?: 0.0) > 0) drawCircle(Color(0xFFE08A1E), 3.dp.toPx(), Offset(tx, top + h - 4.dp.toPx()))
-                if ((t.insulin ?: 0.0) >= 0.5) drawCircle(Color(0xFF3B6FD4), 2.dp.toPx(), Offset(tx, top + h - 11.dp.toPx()))
-            }
+            for (t in carbTimes) if (t in fromMs..toMs) drawCircle(CARB_COLOR, 3.dp.toPx(), Offset(x(t), h - 4.dp.toPx()))
         }
 
         val path = Path()
-        var prev: ChartPoint? = null
+        var prev: GlucoseReadingEntity? = null
         val dots = ArrayList<Offset>()
         var lastX = Float.NEGATIVE_INFINITY
         for (p in points) {
-            val px = x(p.timeMs)
+            val px = x(p.timestampMs)
             val py = y(p.mgdl.coerceIn(yMin, yMax))
-            if (prev == null || p.timeMs - prev.timeMs > GAP_MS) {
-                path.moveTo(px, py)
-                dots.add(Offset(px, py))
-                lastX = px
+            if (prev == null || p.timestampMs - prev.timestampMs > GAP_MS) {
+                path.moveTo(px, py); dots.add(Offset(px, py)); lastX = px
             } else if (px - lastX >= 1f) {
                 // Long periods hold far more readings than pixels, so draw at most one point per pixel column.
-                path.lineTo(px, py)
-                lastX = px
+                path.lineTo(px, py); lastX = px
             }
             prev = p
         }
         drawPath(path, line, style = Stroke(width = 1.5.dp.toPx()))
-        // A lone reading between gaps has no line, so mark each segment start with a dot.
         dots.forEach { drawCircle(line, 1.5.dp.toPx(), it) }
+        drawCursor(selectedMs, ::x, cursor, 0f, h, fromMs, toMs)
+    }
+}
+
+private fun DrawScope.drawCursor(selected: Long?, x: (Long) -> Float, color: Color, top: Float, bottom: Float, fromMs: Long, toMs: Long) {
+    if (selected == null || selected < fromMs || selected > toMs) return
+    drawLine(color, Offset(x(selected), top), Offset(x(selected), bottom), 1.5.dp.toPx())
+}
+
+/**
+ * Basal as a step area (teal; lighter where it comes from the profile schedule) and insulin boluses as bars
+ * (blue; lighter for automatic micro-boluses). It has its own scale, so small boluses are easy to read:
+ * the tallest bar and the highest basal rate each reach near the top.
+ */
+@Composable
+private fun InsulinPanel(state: GlucoseUiState, selectedMs: Long?) {
+    val measurer = rememberTextMeasurer()
+    val basalLabel = TextStyle(fontSize = 11.sp, color = BASAL_COLOR)
+    val bolusLabel = TextStyle(fontSize = 11.sp, color = BOLUS_COLOR)
+    val grid = MaterialTheme.colorScheme.outlineVariant
+    val cursor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+    val fromMs = state.fromMs
+    val toMs = state.toMs
+    val boluses = state.treatments.filter { (it.insulin ?: 0.0) > 0 }
+
+    Canvas(Modifier.fillMaxWidth().height(130.dp)) {
+        val left = AXIS_WIDTH.toPx()
+        val w = size.width - left
+        val h = size.height - 4.dp.toPx()
+        // Round the scales up to tidy numbers so the labels read cleanly.
+        val basalMax = (state.basal.maxOfOrNull { it.rateUph } ?: 0.0).coerceAtLeast(0.5).let { Math.ceil(it * 2) / 2 }
+        val bolusMax = (boluses.maxOfOrNull { it.insulin!! } ?: 0.0).coerceAtLeast(1.0).let { Math.ceil(it) }
+        fun x(t: Long) = left + w * ((t - fromMs).toFloat() / (toMs - fromMs).toFloat())
+
+        drawLine(grid, Offset(left, h), Offset(left + w, h), 1.dp.toPx())
+        drawLine(grid, Offset(left, 0f), Offset(left + w, 0f), 1.dp.toPx())
+
+        for (s in state.basal) {
+            val top = h - h * (s.rateUph / basalMax).toFloat().coerceIn(0f, 1f)
+            val a = if (s.scheduled) 0.18f else 0.40f
+            drawRect(BASAL_COLOR.copy(alpha = a), Offset(x(s.startMs), top), Size((x(s.endMs) - x(s.startMs)).coerceAtLeast(0.5f), h - top))
+            drawLine(BASAL_COLOR.copy(alpha = if (s.scheduled) 0.5f else 1f), Offset(x(s.startMs), top), Offset(x(s.endMs), top), 1.5.dp.toPx())
+        }
+        val barWidth = (if (toMs - fromMs <= 3L * 24 * 3600 * 1000) 4.dp else 2.dp).toPx()
+        for (t in boluses) {
+            if (t.timestampMs !in fromMs..toMs) continue
+            val barH = h * (t.insulin!! / bolusMax).toFloat().coerceIn(0f, 1f)
+            drawRect(if (t.isSmb) SMB_COLOR else BOLUS_COLOR, Offset(x(t.timestampMs) - barWidth / 2, h - barH), Size(barWidth, barH))
+        }
+
+        // Axis labels: the basal scale in teal on the left, the bolus scale in blue just inside it.
+        fun label(text: String, style: TextStyle, yPos: Float, rightAligned: Boolean) {
+            val m = measurer.measure(text, style)
+            drawText(m, topLeft = Offset(if (rightAligned) left - m.size.width - 4.dp.toPx() else left + 4.dp.toPx(), yPos))
+        }
+        label(String.format(Locale.getDefault(), "%.1f U/h", basalMax), basalLabel, 0f, true)
+        label("0", basalLabel, h - 14.dp.toPx(), true)
+        label(String.format(Locale.getDefault(), "%.0f U", bolusMax), bolusLabel, 0f, false)
+        drawCursor(selectedMs, ::x, cursor, 0f, h, fromMs, toMs)
     }
 }

@@ -54,7 +54,6 @@
     <string name="treat_none">No treatments in this period. Sync to load them.</string>
     <string name="treat_meals">%1$d meals, %2$s g carbs per day on average</string>
     <string name="treat_insulin">Bolus insulin %1$s U in total, %2$s U per day (includes automatic micro-boluses, not basal)</string>
-    <string name="treat_legend">On the chart: orange dots are carbs, blue dots are insulin boluses (shown for periods up to 14 days).</string>
     <string name="treat_recent">Most recent</string>
     <string name="treat_carbs">%1$s g carbs</string>
     <string name="treat_units">%1$s U</string>
@@ -84,4 +83,15 @@
     <string name="patterns_meal_high2h">Above range 2 hours after: %1$d of %2$d meals</string>
     <string name="patterns_meal_low4h">Low within 4 hours after: %1$d of %2$d meals</string>
     <string name="patterns_no_data">No readings in this period. Sync to load them.</string>
+    <string name="chart_touch_hint">Touch and slide a finger across the chart to see what was happening at that moment.</string>
+    <string name="chart_legend">Top: glucose, with orange dots for carbs (up to 14 days). Bottom: basal in teal (lighter where it is the profile schedule, which ignores profile percentage and time shift) and insulin boluses as blue bars (lighter for automatic micro-boluses), each with its own scale.</string>
+    <string name="moment_glucose">Glucose %1$s %2$s</string>
+    <string name="moment_no_reading">No glucose reading near this time</string>
+    <string name="moment_basal_temp">Basal %1$s U/h (temp basal)</string>
+    <string name="moment_basal_scheduled">Basal %1$s U/h (profile schedule)</string>
+    <string name="moment_no_basal">No basal information for this time</string>
+    <string name="moment_last3h">Last 3 hours: %1$s g carbs, %2$s U bolus</string>
+    <string name="moment_last_carbs">Last carbs: %1$s g, %2$s earlier</string>
+    <string name="moment_last_bolus">Last bolus: %1$s U, %2$s earlier</string>
+    <string name="moment_last_smb">Last automatic bolus: %1$s U, %2$s earlier</string>
 </resources>
