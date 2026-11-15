@@ -88,7 +88,7 @@ class MainActivity : ComponentActivity() {
                                         tab = i
                                         if (i == 0) glucose.refreshWindow()
                                         // Autotune and Patterns work on the saved data, so bring the last period up to date first.
-                                        if (i == 1) glucose.syncIfStale(30)
+                                        if (i == 1) { autotune.refresh(); glucose.syncIfStale(30) }
                                         if (i == 2) { patterns.refresh(); glucose.syncIfStale(patterns.state.value.days) }
                                     },
                                     icon = {},
@@ -119,8 +119,9 @@ class MainActivity : ComponentActivity() {
                     val autotuneState by autotune.state.collectAsState()
                     val insulinPeak by autotune.peak.collectAsState()
                     val autotuneDays by autotune.days.collectAsState()
+                    val dayQuality by autotune.dayQuality.collectAsState()
                     Box(Modifier.padding(inner)) {
-                        AutotuneScreen(autotuneState, glucoseState.unit, autotuneDays, autotune::setDays, insulinPeak, syncState, autotune::setPeak, autotune::run, autotune::clear)
+                        AutotuneScreen(autotuneState, glucoseState.unit, autotuneDays, autotune::setDays, insulinPeak, syncState, autotune::setPeak, autotune::run, autotune::clear, dayQuality, autotune::excludeDay, autotune::restoreDay, autotune::excludeDays)
                     }
                 } else if (tab == 2) {
                     val patternsState by patterns.state.collectAsState()
@@ -128,7 +129,6 @@ class MainActivity : ComponentActivity() {
                         PatternsScreen(
                             patternsState, glucoseState.unit, syncState, glucose.hasConnection,
                             patterns::setDays, patterns::setBlockHours, onSync = { glucose.sync(patternsState.days) },
-                            onExcludeDay = patterns::excludeDay, onRestoreDay = patterns::restoreDay, onExcludeDays = patterns::excludeDays,
                         )
                     }
                 } else if (tab == 4) {

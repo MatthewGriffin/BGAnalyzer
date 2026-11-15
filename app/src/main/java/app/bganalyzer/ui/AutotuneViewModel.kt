@@ -16,6 +16,13 @@ import app.bganalyzer.autotune.AutotuneRun
 import app.bganalyzer.autotune.Dose
 import app.bganalyzer.autotune.LocalInsulin
 import app.bganalyzer.data.AppDatabase
+import app.bganalyzer.data.ExcludedDayEntity
+import app.bganalyzer.domain.DayQuality
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import app.bganalyzer.domain.BasalTimeline
 import app.bganalyzer.domain.ExcludedDays
 import app.bganalyzer.domain.ProfileResolver
@@ -25,6 +32,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.time.ZoneId
+
+data class DayQualityState(val excluded: List<ExcludedDayEntity> = emptyList(), val noInsulinDays: List<String> = emptyList())
 
 sealed interface AutotuneState {
     data object Idle : AutotuneState
@@ -67,6 +76,38 @@ class AutotuneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clear() { _state.value = AutotuneState.Idle }
+
+    private val refresh = MutableStateFlow(0)
+    /** Recompute the day lists, e.g. when the tab is opened after a sync. */
+    fun refresh() = refresh.update { it + 1 }
+
+    /** Days marked as bad data, and days with glucose but no insulin records at all (candidates to exclude), for the days chosen. */
+    val dayQuality: StateFlow<DayQualityState> = combine(_days, db.excludedDayDao().observeAll(), refresh) { d, excluded, _ ->
+        val to = System.currentTimeMillis()
+        val from = to - d * DAY_MS
+        val zone = db.profileDao().latest()?.timezone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
+        val dates = excluded.map { it.date }.toSet()
+        val noInsulin = DayQuality.daysWithoutInsulin(
+            db.treatmentDao().validBetween(from - 12 * HOUR_MS, to), db.glucoseReadingDao().between(from, to).map { it.timestampMs }, zone, from, to, to,
+        ).filter { it !in dates }
+        DayQualityState(excluded, noInsulin)
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DayQualityState())
+
+    // A changed set of excluded days makes the shown result out of date, so it is cleared.
+    fun excludeDay(date: String, note: String) = excludeDays(listOf(date), note.trim())
+
+    fun excludeDays(dates: List<String>, note: String) {
+        val now = System.currentTimeMillis()
+        viewModelScope.launch(Dispatchers.IO) { db.excludedDayDao().upsertAll(dates.map { ExcludedDayEntity(it, note, now) }) }
+        clearIfDone()
+    }
+
+    fun restoreDay(date: String) {
+        viewModelScope.launch(Dispatchers.IO) { db.excludedDayDao().delete(date) }
+        clearIfDone()
+    }
+
+    private fun clearIfDone() { if (_state.value is AutotuneState.Done) _state.value = AutotuneState.Idle }
 
     private suspend fun compute(days: Int): AutotuneState =
         when (val r = AutotuneFromDb.run(db, days, _peak.value, System.currentTimeMillis()) { d, n -> _state.value = AutotuneState.Running(d, n) }) {
