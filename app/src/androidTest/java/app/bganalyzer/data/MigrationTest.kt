@@ -57,4 +57,15 @@ class MigrationTest {
         db.query("SELECT COUNT(*) FROM iob_samples").use { c -> c.moveToFirst(); assertEquals(0, c.getInt(0)) }
         db.query("SELECT COUNT(*) FROM sync_coverage").use { c -> c.moveToFirst(); assertEquals(0, c.getInt(0)) }
     }
+
+    @Test
+    fun version3To4KeepsSavedDataAndAddsExcludedDays() {
+        helper.createDatabase("migration-test-v3", 3).apply {
+            execSQL("INSERT INTO glucose_readings (timestampMs, mgdl) VALUES (1000, 5.5)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("migration-test-v3", 4, true)
+        db.query("SELECT COUNT(*) FROM glucose_readings").use { c -> c.moveToFirst(); assertEquals(1, c.getInt(0)) }
+        db.query("SELECT COUNT(*) FROM excluded_days").use { c -> c.moveToFirst(); assertEquals(0, c.getInt(0)) }
+    }
 }

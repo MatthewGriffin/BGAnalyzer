@@ -23,10 +23,11 @@ class AppBackup(
     private val iobDao: IobDao,
     private val settings: ConnectionSettings,
     private val nowMs: () -> Long = System::currentTimeMillis,
+    private val excludedDayDao: app.bganalyzer.data.ExcludedDayDao? = null,
 ) {
     suspend fun export(out: OutputStream, passphrase: String): Int {
         val readings = dao.all()
-        val data = BackupData(nowMs(), settings.uri.ifBlank { null }, settings.database.ifBlank { null }, readings, treatmentDao.all(), profileDao.all(), iobDao.all())
+        val data = BackupData(nowMs(), settings.uri.ifBlank { null }, settings.database.ifBlank { null }, readings, treatmentDao.all(), profileDao.all(), iobDao.all(), excludedDayDao?.all().orEmpty())
         out.write(BackupCodec.encode(data, passphrase))
         out.flush()
         return readings.size
@@ -43,6 +44,7 @@ class AppBackup(
         data.treatments.chunked(1000).forEach { treatmentDao.upsertAll(it) }
         data.profiles.chunked(1000).forEach { profileDao.upsertAll(it) }
         data.iob.chunked(1000).forEach { iobDao.upsertAll(it) }
+        excludedDayDao?.upsertAll(data.excludedDays)
         val uri = data.connectionUri
         val database = data.connectionDatabase
         val connection = uri != null && database != null

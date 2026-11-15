@@ -31,6 +31,8 @@ data class BackupData(
     val profiles: List<ProfileEntity> = emptyList(),
     /** Insulin on board reported by the loop. Sync coverage is not saved: it is rebuilt by the next sync. */
     val iob: List<IobSampleEntity> = emptyList(),
+    /** Days the user marked as bad data (added later; older files have none). */
+    val excludedDays: List<app.bganalyzer.data.ExcludedDayEntity> = emptyList(),
 )
 
 class BackupException(val reason: Reason, message: String) : Exception(message) {
@@ -66,6 +68,7 @@ object BackupCodec {
             .append("treatments", data.treatments.map(::treatmentDoc))
             .append("profiles", data.profiles.map(::profileDoc))
             .append("iob", data.iob.map(::iobDoc))
+            .append("excludedDays", data.excludedDays.map { Document("date", it.date).append("note", it.note).append("created", it.createdMs) })
         val salt = ByteArray(16).also(SecureRandom()::nextBytes)
         val iv = ByteArray(12).also(SecureRandom()::nextBytes)
         val sealed = cipher(Cipher.ENCRYPT_MODE, key(passphrase, salt, ITERATIONS), iv)
@@ -131,6 +134,11 @@ object BackupCodec {
             treatments = (payload["treatments"] as? List<*>).orEmpty().mapNotNull { (it as? Document)?.let(::treatmentFrom) },
             profiles = (payload["profiles"] as? List<*>).orEmpty().mapNotNull { (it as? Document)?.let(::profileFrom) },
             iob = (payload["iob"] as? List<*>).orEmpty().mapNotNull { (it as? Document)?.let(::iobFrom) },
+            excludedDays = (payload["excludedDays"] as? List<*>).orEmpty().mapNotNull { row ->
+                val d = row as? Document ?: return@mapNotNull null
+                val date = (d["date"] as? String)?.takeIf { runCatching { java.time.LocalDate.parse(it) }.isSuccess } ?: return@mapNotNull null
+                app.bganalyzer.data.ExcludedDayEntity(date, d["note"] as? String ?: "", (d["created"] as? Number)?.toLong() ?: 0L)
+            },
             createdMs = (payload["createdMs"] as? Number)?.toLong() ?: 0L,
             connectionUri = (connection?.get("uri") as? String)?.takeIf { it.isNotBlank() },
             connectionDatabase = (connection?.get("database") as? String)?.takeIf { it.isNotBlank() },

@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.bganalyzer.data.AppDatabase
+import app.bganalyzer.data.ExcludedDayEntity
+import app.bganalyzer.domain.ExcludedDays
 import app.bganalyzer.domain.BasalComparison
 import app.bganalyzer.domain.BasalComparisonResult
 import app.bganalyzer.domain.BlockStats
@@ -30,6 +32,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import java.time.ZoneId
 
 data class PatternsState(
@@ -49,6 +52,8 @@ data class PatternsState(
     val emptyDays: List<EmptyRange> = emptyList(),
     /** Profile switches in the period, oldest first. */
     val profileChanges: List<EffectiveProfile> = emptyList(),
+    /** Days the user marked as bad data, newest first. They are left out of everything on this tab. */
+    val excludedDays: List<ExcludedDayEntity> = emptyList(),
     val suggestions: SuggestionResult = SuggestionResult(emptyList(), emptyList()),
 )
 
@@ -58,17 +63,21 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
     private val blockHours = MutableStateFlow(6)
     private val refresh = MutableStateFlow(0)
 
-    val state: StateFlow<PatternsState> = combine(days, blockHours, refresh, db.coverageDao().observeAll()) { d, b, _, coverage -> Triple(d, b, coverage) }
+    val state: StateFlow<PatternsState> = combine(days, blockHours, refresh, db.coverageDao().observeAll(), db.excludedDayDao().observeAll()) { d, b, _, coverage, ex -> Triple(d, b, coverage to ex) }
         .let { settings ->
             kotlinx.coroutines.flow.flow {
-                settings.collect { (d, b, coverage) ->
+                settings.collect { (d, b, covEx) ->
+                    val (coverage, excluded) = covEx
                     val to = System.currentTimeMillis()
                     val from = to - d * DAY_MS
                     val zone = db.profileDao().latest()?.timezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
                         ?: ZoneId.systemDefault()
-                    val readings = db.glucoseReadingDao().between(from, to)
+                    val allReadings = db.glucoseReadingDao().between(from, to)
+                    val excludedDates = excluded.map { it.date }.toSet()
+                    val readings = ExcludedDays.readings(allReadings, zone, excludedDates)
                     val resolver = ProfileResolver(ProfileTimeline.entries(db.treatmentDao().profileEvents()), db.profileDao().all())
-                    val treatments = db.treatmentDao().validBetween(from - 12 * 3_600_000L, to)
+                    val allTreatments = db.treatmentDao().validBetween(from - 12 * 3_600_000L, to)
+                    val treatments = ExcludedDays.treatments(allTreatments, zone, excludedDates)
                     val blockStats = TimeBlocks.analyze(readings, zone, b)
                     val mealStats = PostMeal.analyze(readings, PostMeal.meals(treatments).filter { it.timeMs >= from }, zone, b)
                     val basalStats = BasalComparison.analyze(treatments, resolver, from, to, zone, b)
@@ -79,6 +88,7 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                             mealStats,
                             unsyncedMs = SyncPlanner.unsyncedMs(coverage.map { it.source to Span(it.startMs, it.endMs) }, Span(from, to)),
                             basal = basalStats,
+                            excludedDays = excluded,
                             suggestions = Suggestions.generate(
                                 blockStats, mealStats, basalStats,
                                 FastingDrift.analyze(readings, treatments, zone, b),
@@ -95,8 +105,8 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                             emptyDays = run {
                                 val period = Span(from, to)
                                 fun covered(source: String) = coverage.filter { it.source == source }.map { Span(it.startMs, it.endMs) }
-                                DataChecks.emptyRanges(Sources.GLUCOSE, readings.map { it.timestampMs }, covered(Sources.GLUCOSE), period, zone, 100, to) +
-                                    DataChecks.emptyRanges(Sources.TREATMENTS, treatments.map { it.timestampMs }, covered(Sources.TREATMENTS), period, zone, 5, to) +
+                                DataChecks.emptyRanges(Sources.GLUCOSE, allReadings.map { it.timestampMs }, covered(Sources.GLUCOSE), period, zone, 100, to) +
+                                    DataChecks.emptyRanges(Sources.TREATMENTS, allTreatments.map { it.timestampMs }, covered(Sources.TREATMENTS), period, zone, 5, to) +
                                     DataChecks.emptyRanges(Sources.IOB, db.iobDao().timestampsSince(from), covered(Sources.IOB), period, zone, 5, to)
                             },
                         ),
@@ -106,6 +116,14 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
         }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PatternsState())
+
+    fun excludeDay(date: String, note: String) {
+        viewModelScope.launch(Dispatchers.IO) { db.excludedDayDao().upsertAll(listOf(ExcludedDayEntity(date, note.trim(), System.currentTimeMillis()))) }
+    }
+
+    fun restoreDay(date: String) {
+        viewModelScope.launch(Dispatchers.IO) { db.excludedDayDao().delete(date) }
+    }
 
     fun setDays(value: Int) = days.update { value }
     fun setBlockHours(value: Int) = blockHours.update { value }
