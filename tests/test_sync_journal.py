@@ -192,7 +192,7 @@ def test_existing_database_backed_up_before_upgrade(config):
     conn.execute("INSERT INTO sources VALUES('old','https://old.test','v1',NULL,'{}',0)")
     conn.commit()
     initialize_database(config)
-    assert get_current_version(conn) == 2
+    assert get_current_version(conn) == 3
     backups = list(config.data_dir.glob("before-migration-1-*.db"))
     assert len(backups) == 1
     with sqlite3.connect(backups[0]) as old:

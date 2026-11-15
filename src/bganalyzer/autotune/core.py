@@ -314,7 +314,7 @@ def tune_day(
             ratios.append(1 + bg.deviation / bg.bgi)
 
     new_isf = isf
-    if len(isf_deviations) >= 10:
+    if len(isf_deviations) >= 10 and ratios:
         # Sort for percentile
         isf_deviations.sort()
         bgis.sort()
@@ -428,6 +428,7 @@ def run_autotune(
             from_=day.startBG,
             localInsulin=tuned.local_insulin,
             profileName=baseline_profile.profileName,
+            timezone=baseline_profile.timezone,
         )
 
     return tuned_days

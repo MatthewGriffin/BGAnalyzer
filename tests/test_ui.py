@@ -217,7 +217,68 @@ def test_hourly_decisions_follow_sorted_selection(qtbot, config, repo):
     assert "Contributing days: 3" in text
     assert "1.027 U/hr" in text
     assert "not retained" in text
-    assert "1.025" in window.basal_table.item(0, 2).text()
+    assert window.basal_table.item(0, 2).text() == "1.02 U/hr"
+    assert "1.025" in window.basal_table.item(0, 2).toolTip()
     window._render_basal_table({})
     assert "No hourly candidates" in window.basal_details.toPlainText()
+    window.close()
+
+
+def test_carb_ratio_is_displayed_alongside_basal(qtbot, config, repo):
+    window = MainWindow(config, CredentialProvider(config))
+    qtbot.addWidget(window)
+    window.timer.stop()
+    qtbot.waitUntil(lambda: window.report_worker is None)
+    window._render_basal_table({'descriptive_candidates': [
+        dict(family='basal', segment=1, time='01:00', baseline_value=1, proposed_value=1.025),
+        dict(family='ic', segment='global', baseline_value=10, proposed_value=9,
+             confidence='low', status='candidate')]})
+    assert window.basal_table.rowCount() == 2
+    row = next(i for i in range(2) if 'Insulin-to-carb' in window.basal_table.item(i, 0).text())
+    assert window.basal_table.item(row, 2).text() == '9 g/U'
+    window.basal_table.selectRow(row)
+    assert 'more meal insulin' in window.basal_details.toPlainText()
+    window.close()
+
+
+def test_iob_connects_slower_uploads_but_breaks_unknowns_and_outages(qtbot, config, repo):
+    from types import SimpleNamespace
+    import numpy as np
+    window = MainWindow(config, CredentialProvider(config))
+    qtbot.addWidget(window)
+    window.timer.stop()
+    qtbot.waitUntil(lambda: window.report_worker is None)
+    minute = 60000
+    window._render_iob(SimpleNamespace(iob_points=[
+        (0, 2.0), (15*minute, 1.5), (30*minute, 1.0),
+        (35*minute, None), (40*minute, 0.5), (120*minute, 0.0)]))
+    curve = window.iob_curve
+    assert curve.opts['symbol'] is None
+    assert curve.opts['pen'] is not None
+    assert curve.opts['connect'] == 'finite'
+    assert np.all(np.isfinite(curve.yData[:3]))
+    assert np.isnan(curve.yData[3])
+    assert np.isnan(curve.yData[-2])
+    assert curve.yData[-1] == 0
+    window.close()
+
+
+def test_exclusion_controls_mark_day_restore_and_clear_old_results(qtbot, config, repo):
+    window = MainWindow(config, CredentialProvider(config))
+    qtbot.addWidget(window)
+    window.timer.stop()
+    qtbot.waitUntil(lambda: window.report_worker is None)
+    assert window.exclude_day_button.isEnabled()
+    window._render_basal_table({'descriptive_candidates': [dict(
+        family='basal', segment=1, time='01:00', baseline_value=1, proposed_value=1.1)]})
+    window._exclude_graph_day()
+    qtbot.waitUntil(lambda: window.report_worker is None)
+    assert window.basal_table.rowCount() == 0
+    assert 'EXCLUDED FROM ANALYSIS' in window.exclusion_status.text()
+    assert window.excluded_days.count() == 1
+    assert window._report_snapshot.analysis_exclusions[0]['reason'] == 'Pod failure'
+    window._restore_excluded_day()
+    qtbot.waitUntil(lambda: window.report_worker is None)
+    assert window.excluded_days.count() == 0
+    assert not window.restore_day_button.isEnabled()
     window.close()

@@ -436,12 +436,18 @@ class EligibilityChecker:
                 intervals = delivery.resolve_delivery(cursor, day_end)
             except Exception:
                 return [ReasonCode.DELIVERY_HISTORY_UNRESOLVED]
-            for interval in intervals:
+            covered_until = cursor
+            for interval in sorted(intervals, key=lambda interval: interval.start_ms):
+                if interval.start_ms > covered_until:
+                    return [ReasonCode.DELIVERY_HISTORY_UNRESOLVED]
+                covered_until = max(covered_until, interval.end_ms)
                 if interval.origin == DeliveryOrigin.UNKNOWN or interval.quality in (
                     "uncertain",
                     "conflicted",
                 ):
                     return [ReasonCode.DELIVERY_HISTORY_UNRESOLVED]
+            if covered_until < day_end:
+                return [ReasonCode.DELIVERY_HISTORY_UNRESOLVED]
             cursor = day_end
         return []
 

@@ -435,6 +435,7 @@ def build_basal_recommendations(snapshot, config, timezone, settings=None, cance
 
         check("autotune_input", True, f"Built autotune input with {len(analysis_snapshot.analysis_days)} analysis days.")
 
+        result["baseline_evidence"] = analysis_snapshot.baseline_evidence
         baseline = analysis_snapshot.baseline_profile
         pump_profile = analysis_snapshot.pump_profile
         # DIA/peak provenance: the profile store states DIA but never peak
@@ -495,6 +496,11 @@ def build_basal_recommendations(snapshot, config, timezone, settings=None, cance
             result["message"] = "Basal changes withheld: insulin DIA/peak unresolved."
             return result
 
+        from bganalyzer.autotune.orchestration import resolve_daily_insulin
+        invalid_days = resolve_daily_insulin(analysis_snapshot, observations)
+        result["historical_insulin_exclusions"] = invalid_days
+        check("daily_insulin_parameters", not invalid_days,
+              f"{len(invalid_days)} days excluded because historical insulin settings could not be resolved.")
         result["timings"]["snapshot_s"] = round(time.perf_counter() - t_snapshot, 3)
         throw_if_cancelled(cancelled)
         t_autotune = time.perf_counter()
@@ -502,8 +508,15 @@ def build_basal_recommendations(snapshot, config, timezone, settings=None, cance
         result["timings"]["autotune_s"] = round(time.perf_counter() - t_autotune, 3)
 
         if not analysis_snapshot.analysis_days:
-            check("autotune_input", False, "No valid analysis days with sufficient glucose data.")
-            result["message"] = "Basal changes withheld: no analysis days with valid data."
+            result["descriptive_candidates"] = [{
+                "family": "isf", "segment": "global", "baseline_value": baseline.isf,
+                "proposed_value": None, "status": "insufficient_evidence", "confidence": "low",
+                "supported": False, "direction": "unavailable",
+                "reason": "No complete days under the current settings with matching insulin lookback.",
+            }]
+            from bganalyzer.autotune.profile_period import no_analysis_days_message
+            result["message"] = no_analysis_days_message(analysis_snapshot.baseline_evidence, timezone)
+            check("autotune_input", False, result["message"])
             return result
 
         # Check eligibility
@@ -669,15 +682,30 @@ def build_basal_recommendations(snapshot, config, timezone, settings=None, cance
             result["message"] = "Basal changes withheld: release validation is incomplete."
             return result
         candidates = _generate_candidates(autotune_output, analysis_snapshot.baseline_profile, policy, eligibility)
-        result["recommendations"] = candidates
+        ready, descriptive = partition_candidates(candidates)
+        result["recommendations"] = ready
+        result["descriptive_candidates"] = descriptive
         result["candidate_grid"] = _candidate_grid(candidates, confidence="full")
-        result["status"] = "eligible"
-        result["message"] = f"Generated {len(candidates)} candidate(s) from {len(autotune_output.tuned_days)} tuned days."
+        result["status"] = "eligible" if ready else "withheld"
+        result["message"] = (f"{len(ready)} candidates passed all release checks; "
+                             f"{len(descriptive)} remain descriptive or rejected. "
+                             f"Analysis used {len(autotune_output.tuned_days)} tuned days.")
 
     finally:
         conn.rollback()
 
     return result
+
+
+def partition_candidates(candidates):
+    ready, descriptive = [], []
+    for candidate in candidates:
+        eligible = (candidate.get('status') == 'candidate' and candidate.get('confidence') == 'full'
+                    and candidate.get('supported') is True
+                    and (candidate.get('family') != 'basal'
+                         or candidate.get('hourly_support', {}).get('numerical_release_ready') is True))
+        (ready if eligible else descriptive).append(candidate)
+    return ready, descriptive
 
 
 def _generate_candidates(
@@ -825,8 +853,8 @@ def _generate_candidates(
                     "baseline_value": baseline_ic,
                     "proposed_value": quantized,
                     "raw_value": tuned_ic,
-                    "direction": "increase" if quantized > baseline_ic else "decrease",
-                    "status": "candidate",
+                    "direction": "unchanged" if quantized == baseline_ic else "increase" if quantized > baseline_ic else "decrease",
+                    "status": "unchanged" if quantized == baseline_ic else "candidate",
                     "contributing_days": n_contributing_days,
                     "supported": ic_supported,
                     "sensitivity_min": ic_loo_range["min"] if ic_loo_range else None,
@@ -861,6 +889,15 @@ def _generate_candidates(
                 "reason_codes": withholding_reasons,
             })
 
+
+    else:
+        candidates.append({
+            "family": "ic", "segment": "global",
+            "baseline_value": baseline_ic, "proposed_value": baseline_ic,
+            "raw_value": tuned_ic, "direction": "unchanged", "status": "unchanged",
+            "contributing_days": n_contributing_days, "supported": ic_supported,
+            "confidence": confidence, "reason_codes": withholding_reasons,
+        })
 
     # Generate ISF candidate (scalar)
     # ISF is always supported=False per §11: reference defines no correction episodes.
@@ -922,6 +959,14 @@ def _generate_candidates(
             })
 
 
+    if not any(c["family"] == "isf" for c in candidates):
+        candidates.append({
+            "family": "isf", "segment": "global", "baseline_value": baseline_isf,
+            "proposed_value": baseline_isf, "raw_value": tuned_isf,
+            "status": "unchanged", "direction": "unchanged", "supported": False,
+            "confidence": confidence, "reason_codes": withholding_reasons,
+        })
+
     from bganalyzer.analytics.candidate_details import attach_basal_evidence
 
     attach_basal_evidence(candidates, autotune_output, baseline_profile, policy)
@@ -963,6 +1008,7 @@ def _candidate_grid(candidates, confidence="full"):
             "sensitivity_max": c.get("sensitivity_max"),
             "confidence": c.get("confidence", confidence),
             "reason_codes": c.get("reason_codes", []),
+            "hourly_support": c.get("hourly_support"),
         }
     return {f"{family}:{segment}": v for (family, segment), v in sorted(grid.items())}
 
@@ -1181,11 +1227,17 @@ def format_readiness(result):
                     f"({c['direction']}) [{c['status']}]"
                 )
             elif c.get("family") == "ic":
+                if c.get("proposed_value") is None:
+                    lines.append("  IC (global): insufficient meal evidence; no proposed ratio.")
+                    continue
                 lines.append(
                     f"  IC (global): {c['baseline_value']:.1f} → {c['proposed_value']:.1f} g/U "
                     f"({c['direction']}) [{c['status']}]"
                 )
             elif c.get("family") == "isf":
+                if c.get("proposed_value") is None:
+                    lines.append("  ISF (global): insufficient current-profile evidence; no proposed value.")
+                    continue
                 lines.append(
                     f"  ISF (global): {c['baseline_value']:.1f} → {c['proposed_value']:.1f} mg/dL/U "
                     f"({c['direction']}) [{c['status']}]"
@@ -1206,7 +1258,9 @@ def format_readiness(result):
             lines.append(f"  [{label}]")
             merged = _merge_basal_ranges(rows)
             for row in merged:
-                lines.append(f"    {row['range']}: {row['baseline']:.3f} → {row['proposed']:.3f} U/hr ({row['direction']}) [{row['status']}]")
+                proposed = f"{row['proposed']:.3f}" if row['proposed'] is not None else "Unavailable"
+                unit = "g/U" if row['range'].startswith("IC ") else "mg/dL/U" if row['range'].startswith("ISF ") else "U/hr"
+                lines.append(f"    {row['range']}: {row['baseline']:.3f} → {proposed} {unit} ({row['direction']}) [{row['status']}]")
             lines.append("")
         lines.append("")
 

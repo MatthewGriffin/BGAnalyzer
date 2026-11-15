@@ -44,6 +44,8 @@ class Treatment:
     is_valid: bool = True
     type: str = "NORMAL"  # NORMAL, SMB, PRIMING
     is_bolus: bool = True
+    source_id: str = ""
+    revision_hash: str = ""
 
 
 @dataclass
@@ -64,6 +66,8 @@ class TempBasal:
     rate: float
     is_absolute: bool
     is_valid: bool = True
+    source_id: str = ""
+    revision_hash: str = ""
 
 
 @dataclass
@@ -122,7 +126,7 @@ class AutotuneIob:
             return 0.0
 
         for bolus in self._boluses_sorted:
-            if bolus.amount != 0.0 and bolus.timestamp > start and bolus.timestamp <= end:
+            if bolus.is_valid and bolus.type != "PRIMING" and bolus.amount != 0.0 and bolus.timestamp > start and bolus.timestamp <= end:
                 insulin_dosed += bolus.amount
 
         return Round.round_to(insulin_dosed, 0.001)
@@ -155,7 +159,7 @@ def categorize_day(
         PreppedGlucose with categorized data, or None if insufficient data
     """
     if local_insulin is None:
-        local_insulin = profile.localInsulin or LocalInsulin(profile.peak, profile.dia)
+        local_insulin = profile.localInsulin or LocalInsulin(None, profile.peak, profile.dia)
 
     # Filter valid glucose > 39 mg/dL
     glucose_data = [g for g in glucose_readings if g["value"] > 39]
@@ -175,10 +179,12 @@ def categorize_day(
             print("[Prep] Insufficient glucose data after bucketing")
         return None
 
-    # Prepare IOB calculator
+    # Include signed net basal alongside reported boluses and SMBs.
+    from bganalyzer.autotune.net_basal import temp_basal_treatments
+    contributions = temp_basal_treatments(temp_basals, profile)
     iob_data = AutotuneIobData(
-        boluses=[t for t in treatments if t.is_bolus],
-        meals=carb_entries,
+        boluses=[t for t in treatments if t.is_bolus] + contributions,
+        meals=sorted(carb_entries, key=lambda entry: -entry.timestamp),
         glucose=glucose_readings,
         temp_basals=temp_basals,
     )

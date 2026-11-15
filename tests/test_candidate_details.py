@@ -40,3 +40,27 @@ def test_plain_summary_distinguishes_repeated_mixed_and_opposing_evidence():
     assert "do not support the direction" in summarize_candidate_decision(candidate, {})
     candidate['decision_evidence']['samples'] = []
     assert "cannot claim a repeated high or low" in summarize_candidate_decision(candidate, {})
+
+
+def test_carb_ratio_summary_explains_inverse_direction_and_scope():
+    from bganalyzer.analytics.candidate_details import summarize_candidate_decision
+    candidate = dict(family="ic", baseline_value=10, proposed_value=9, confidence="low",
+                     meal_evidence=dict(episode_count=12, tuned_day_ratios=[9.5, 9]))
+    text = summarize_candidate_decision(candidate, {})
+    assert "more meal insulin" in text
+    assert "12 meal episodes" in text
+    assert "not separate breakfast" in text
+    assert "unvalidated" in text
+    candidate['proposed_value'] = 11
+    assert "less meal insulin" in summarize_candidate_decision(candidate, {})
+
+
+def test_isf_summary_keeps_calculation_visible_and_explains_direction():
+    from bganalyzer.analytics.candidate_details import summarize_candidate_decision
+    candidate = dict(family='isf', baseline_value=50, proposed_value=55, confidence='low',
+                     isf_evidence={'days': [dict(reading_count=12, median_ratio=1.1),
+                                           dict(reading_count=12, median_ratio=0.9)]})
+    text = summarize_candidate_decision(candidate, {})
+    assert 'less correction insulin' in text
+    assert '1 pointed toward a higher ISF, 1 toward a lower ISF' in text
+    assert 'unvalidated estimate' in text

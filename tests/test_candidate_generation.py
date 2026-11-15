@@ -9,6 +9,7 @@ Verifies that:
 """
 
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Optional
 
 from bganalyzer.autotune.models import ATProfile
@@ -85,6 +86,7 @@ def _autotune_output_with_tuned(tuned_profile):
     baseline = _profile(1.0, ic=10.0, isf=50.0)
     return AutotuneOutput(
         tuned_days=[tuned_profile],
+        prepped_days=[SimpleNamespace(basalGlucoseData=[], isfGlucoseData=[SimpleNamespace(bgi=-1, deviation=-0.1)] * 10, crData=[SimpleNamespace(crInsulinTotal=3.0)])],
         final_profile=_profile(tuned_profile.basal[0], tuned_profile.ic, tuned_profile.isf),
         baseline_profile=baseline,
         eligibility={},
@@ -126,12 +128,14 @@ def test_empty_candidates_when_no_tuned_days():
     assert result == []
 
 
-def test_no_candidates_when_no_change():
+def test_no_change_returns_informational_scalar_rows():
     baseline = _profile(1.0, ic=10.0, isf=50.0)
     tuned = _tuned(1.0, ic=10.0, isf=50.0)  # identical to baseline
     output = _autotune_output_with_tuned(tuned)
     result = _generate_candidates(output, baseline, _permissive_policy())
-    assert result == []
+    assert {row["family"] for row in result} == {"ic", "isf"}
+    assert result[0]["family"] == "ic"
+    assert result[0]["status"] == "unchanged"
 
 
 def test_basal_candidate_has_enriched_metadata():
@@ -255,3 +259,26 @@ def test_empty_candidate_rendering_does_not_invent_or_mutate_results():
     assert result == before
     assert "No numerical candidates were produced" in text
     assert "15 analysis days" not in text
+
+
+def test_unchanged_carb_ratio_is_explicit():
+    output = _autotune_output_with_tuned(_tuned(ic=10.0))
+    rows = _generate_candidates(output, _profile(ic=10.0), _permissive_policy())
+    ic = next(row for row in rows if row['family'] == 'ic')
+    assert ic['status'] == 'unchanged'
+    assert ic['direction'] == 'unchanged'
+    assert ic['baseline_value'] == ic['proposed_value'] == 10.0
+
+
+def test_no_usable_meals_does_not_present_baseline_as_result():
+    output = _autotune_output_with_tuned(_tuned(ic=7.0))
+    output.prepped_days[0].crData[0].crInsulinTotal = 0
+    rows = _generate_candidates(output, _profile(ic=7.0), _permissive_policy())
+    ic = next(row for row in rows if row['family'] == 'ic')
+    assert ic['status'] == 'insufficient_evidence'
+    assert ic['proposed_value'] is None
+    assert ic['baseline_value'] == 7.0
+
+    from bganalyzer.analytics.basal_recommendations import format_readiness
+    text = format_readiness({"status": "withheld", "descriptive_candidates": rows})
+    assert "Unavailable g/U" in text

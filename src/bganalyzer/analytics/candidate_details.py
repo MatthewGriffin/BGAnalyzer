@@ -15,9 +15,43 @@ def attach_basal_evidence(candidates, output, baseline, policy):
             for offset in (1, 2, 3):
                 samples[(hour - offset) % 24].append(sample)
     for candidate in candidates:
+        if candidate["family"] == "isf":
+            from bganalyzer.autotune.core import _percentile
+            days = []
+            for index, day in enumerate(output.prepped_days):
+                readings = getattr(day, "isfGlucoseData", [])
+                ratios = sorted(1 + bg.deviation / bg.bgi for bg in readings if bg.bgi != 0)
+                days.append({"reading_count": len(readings), "ratio_count": len(ratios),
+                             "median_ratio": _percentile(ratios, 0.5) if ratios else None,
+                             "tuned_isf": output.tuned_days[index].isf})
+            usable = sum(d["reading_count"] >= 10 and d["ratio_count"] > 0 for d in days)
+            candidate["isf_evidence"] = {"days": days, "usable_days": usable}
+            candidate["confidence"] = "low"
+            candidate["isf_limitation"] = "Calculated ISF remains visible; correction-episode validation is not established."
+            if usable == 0 and candidate.get("status") in ("candidate", "unchanged"):
+                candidate.update(status="insufficient_evidence", proposed_value=None, direction="unavailable")
+        if candidate["family"] == "ic":
+            candidate["meal_evidence"] = {
+                "episode_count": sum(len(getattr(day, "crData", [])) for day in output.prepped_days),
+                "tuned_day_ratios": [day.ic for day in output.tuned_days],
+                "usable_episode_count": sum(
+                    cr.crInsulinTotal > 0
+                    for day in output.prepped_days for cr in getattr(day, "crData", [])
+                ),
+            }
+            if (candidate["meal_evidence"]["usable_episode_count"] == 0
+                    and candidate.get("status") in ("candidate", "unchanged")):
+                candidate["status"] = "insufficient_evidence"
+                candidate["proposed_value"] = None
+                candidate["direction"] = "unavailable"
         if candidate["family"] != "basal":
             continue
         hour = int(candidate["segment"])
+        from bganalyzer.analytics.hourly_support import hourly_support
+        support = hourly_support(candidate, samples[hour], policy.min_eligible_days)
+        candidate["hourly_support"] = support
+        if not support['numerical_release_ready']:
+            candidate['confidence'] = 'low'
         bounds = policy.basal_bounds
         candidate["decision_evidence"] = {
             "timezone": zone, "samples": samples[hour],
@@ -36,14 +70,102 @@ def summarize_candidate_decision(candidate, result):
     rejected = candidate.get("status") == "rejected"
     withheld = (result.get("status") == "withheld" or candidate.get("confidence") == "low"
                 or status != "eligible")
-    if rejected:
+    if candidate.get("status") == "insufficient_evidence":
+        setting = "meal evidence for a carb-ratio change" if candidate.get("family") == "ic" else "current-profile evidence for an ISF change"
+        opening = (f"Insufficient {setting}. "
+                   "The baseline is shown for reference, not as a confirmed result.")
+    elif candidate.get("status") == "unchanged":
+        opening = "The calculation did not produce a representable change. This does not establish that the current setting is optimal."
+    elif rejected:
         opening = "This change was rejected by the app's checks."
     elif withheld:
         opening = "This is an unvalidated calculation, not a cleared recommendation."
     else:
         opening = "This candidate passed the app's technical eligibility checks."
     lines = [opening]
+    profile = result.get("baseline_evidence")
+    if profile:
+        cutoff = datetime.fromtimestamp(profile["as_of_ms"] / 1000, ZoneInfo("UTC"))
+        effective = datetime.fromtimestamp(profile["effective_from_ms"] / 1000, ZoneInfo("UTC"))
+        lines.append(f"Compared with the latest profile resolved at {cutoff:%Y-%m-%d %H:%M UTC}, "
+                     f"effective from {effective:%Y-%m-%d %H:%M UTC}. "
+                     f"Profile evidence: {profile['origin']} ({profile['certainty']}).")
+    if profile and "retained_days" in profile:
+        lines.append(f"This run uses {profile['retained_days']} complete days under the current settings. "
+                     f"{len(profile['excluded_days'])} days were excluded because settings or insulin "
+                     "lookback differed, you excluded the day or its insulin context, or the day was incomplete. Older settings are not reused "
+                     "to push the new profile further.")
+    if profile and profile.get("user_exclusions"):
+        lines.append("Days you excluded (also excluded from insulin lookback): " + "; ".join(
+            f"{item['local_date']} ({item['timezone']}): {item['reason']}"
+            for item in profile['user_exclusions']))
+    if candidate.get("family") == "basal":
+        lines.append("The grid rounds rates to two decimals for display. Exact calculation values are shown below.")
     baseline, proposed = candidate.get("baseline_value"), candidate.get("proposed_value")
+    if candidate.get("family") == "isf":
+        if isinstance(proposed, (int, float)):
+            lines.append(f"The calculated ISF is {proposed:g} mg/dL per unit, compared with "
+                         f"{baseline:g} mg/dL per unit in the current profile.")
+            if proposed != baseline:
+                effect = "less" if proposed > baseline else "more"
+                lines.append(f"This would mean {effect} correction insulin for the same glucose difference.")
+        evidence = candidate.get("isf_evidence", {})
+        days = evidence.get("days", [])
+        usable = [d for d in days if d['reading_count'] >= 10 and d['median_ratio'] is not None]
+        if usable:
+            up = sum(d['median_ratio'] > 1 for d in usable)
+            down = sum(d['median_ratio'] < 1 for d in usable)
+            lines.append(f"Of {len(usable)} days with usable ISF inputs, {up} pointed toward "
+                         f"a higher ISF, {down} toward a lower ISF, and {len(usable)-up-down} "
+                         "toward no change. Opposing days mean the evidence is mixed.")
+            lines.append("The engine compares observed glucose movement with the movement predicted "
+                         "from insulin activity. It uses the middle adjustment ratio for each day, "
+                         "limits that estimate, then blends 20% of it with 80% of the previous "
+                         "estimate. Each run starts again from the uploaded current profile; "
+                         "it does not use the last suggestion as its starting point.")
+        else:
+            lines.append("No days met the ISF calculation's usable-input requirement. "
+                         "A retained baseline is not confirmation that it is appropriate.")
+        if candidate.get('reason'):
+            lines.append(candidate['reason'])
+        lines.append("ISF is included in the calculation and shown here, but correction-episode "
+                     "validation is not established. Treat this as an unvalidated estimate.")
+        return "\n\n".join(lines)
+    if candidate.get("family") == "ic":
+        if isinstance(baseline, (int, float)) and isinstance(proposed, (int, float)):
+            lines.append(f"The calculated insulin-to-carb ratio changes from {baseline:g} to "
+                         f"{proposed:g} grams of carbohydrate per unit of insulin (g/U).")
+            if proposed != baseline:
+                effect = "more" if proposed < baseline else "less"
+                lines.append(f"This means {effect} meal insulin for the same amount of carbohydrate.")
+            else:
+                lines.append("After rounding, this is unchanged from the baseline ratio.")
+        evidence = candidate.get("meal_evidence")
+        if evidence:
+            lines.append(f"The analysis retained {evidence['episode_count']} meal episodes for "
+                         f"carb-ratio calculations across {len(evidence['tuned_day_ratios'])} tuned days. "
+                         "The engine compares recorded carbs with estimated insulin needed over "
+                         "meal episodes, taking starting insulin on board and the glucose change "
+                         "into account. Episodes with a non-positive estimated insulin total do "
+                         "not contribute to the daily ratio.")
+            if evidence.get("usable_episode_count") is not None:
+                lines.append(f"Usable meal episodes: {evidence['usable_episode_count']}. "
+                             "With none, the engine retains the previous ratio; this is not "
+                             "evidence that the ratio is correct.")
+            lines.append("Each day's update blends 20% of the bounded meal-derived ratio with "
+                         "80% of the previous ratio, then applies bounds and rounding. "
+                         "This is not simply a response to high glucose after one meal.")
+        else:
+            lines.append("The meal calculation details were not retained in this result. "
+                         "Run the analysis again to obtain them.")
+        lines.append("This is one overall ratio estimate, not separate breakfast, lunch and "
+                     "dinner recommendations. The retained summary does not establish which "
+                     "individual meals drove the change.")
+        if candidate.get('reason'):
+            lines.append("Why it was rejected: " + candidate['reason'])
+        if candidate.get('supported') is False:
+            lines.append("The required meal-episode support was not established for this candidate.")
+        return "\n\n".join(lines)
     if candidate.get("family") != "basal":
         return opening + "\n\nAn hourly basal explanation does not apply to this setting. See calculation details."
     hour = int(candidate['segment'])
@@ -53,6 +175,15 @@ def summarize_candidate_decision(candidate, result):
                      f"{direction} basal from {baseline:g} to {proposed:g} U/hr.")
     else:
         direction = "unknown"
+    support = candidate.get('hourly_support')
+    if support:
+        lines.append(f"Hourly evidence: {support['strength']}. "
+                     f"{support['supporting_days']} supporting days, {support['opposing_days']} opposing days, "
+                     f"{support['neutral_days']} neutral days; {support['sample_count']} selected readings.")
+        lines.append(f"Removing one day and recalculating: {support['leave_one_day_out']}. "
+                     f"The hourly support check requires {support['minimum_supporting_days']} supporting days "
+                     "and a leave-one-day-out range that stays on the same side of the baseline. "
+                     "These are engineering checks, not a probability of benefit.")
     evidence = candidate.get('decision_evidence') or {}
     samples = evidence.get('samples', [])
     if not samples:
@@ -118,6 +249,13 @@ def format_candidate_decision(candidate, result):
                  f"{candidate.get('sensitivity_max')} {unit} (None means unavailable)")
     if candidate.get("reason_codes"):
         lines.append("Withholding reasons: " + ", ".join(candidate["reason_codes"]))
+    if candidate.get("isf_evidence"):
+        lines += ["", "ISF calculation inputs by day:"]
+        for index, day in enumerate(candidate["isf_evidence"]["days"], 1):
+            lines.append(f"Day {index}: {day['reading_count']} classified readings; "
+                         f"{day['ratio_count']} usable ratios; median ratio {day['median_ratio']}; "
+                         f"tuned ISF {day['tuned_isf']:g} mg/dL/U.")
+        return "\n".join(lines)
     evidence = candidate.get("decision_evidence")
     if not evidence:
         return "\n".join(lines + ["", "Detailed input evidence was not retained for this candidate."])

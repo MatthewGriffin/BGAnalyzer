@@ -16,6 +16,9 @@ import json
 from bganalyzer.autotune.models import ATProfile, LocalInsulin
 
 
+# AAPS Constants.MMOLL_TO_MGDL
+MMOLL_TO_MGDL = 18.0
+
 @dataclass
 class ProfileVersion:
     """Stored profile version from Nightscout."""
@@ -135,11 +138,14 @@ class ProfileTimeline:
         a real schedule, which is what autotune needs to tune against.
         """
         # Find active activation
-        activation = None
-        for act in self.activations:
-            if act.start_ms <= at_ms and (act.end_ms is None or act.end_ms > at_ms):
-                activation = act
-                break
+        # Prefer the latest covering activation, preserving evidence priority
+        # for records at the same timestamp (explicit switches precede inferred stores).
+        activation = max(
+            (act for act in self.activations
+             if act.start_ms <= at_ms and (act.end_ms is None or act.end_ms > at_ms)),
+            key=lambda act: act.start_ms,
+            default=None,
+        )
 
         if activation is None:
             store_pv = self._store_fallback(at_ms)
@@ -199,8 +205,17 @@ class ProfileTimeline:
                 target_low_schedule = self._apply_customization(target_low_schedule, "target", percentage, time_shift)
                 target_high_schedule = self._apply_customization(target_high_schedule, "target", percentage, time_shift)
 
-        dia = profile_data.get("dia", 5.0)
-        peak = profile_data.get("peak", 75)
+        # AAPS uploads ISF and targets in the profile's own glucose units
+        # (ProfileSealed.toPureNsJson) and converts with toMgdl() when it reads
+        # them. All glucose here is mg/dL, so do the same conversion.
+        units = str(profile_data.get("units") or pv.units_original or "").strip().lower()
+        if units in ("mmol", "mmol/l"):
+            isf_schedule = [(t, v * MMOLL_TO_MGDL) for t, v in isf_schedule]
+            target_low_schedule = [(t, v * MMOLL_TO_MGDL) for t, v in target_low_schedule]
+            target_high_schedule = [(t, v * MMOLL_TO_MGDL) for t, v in target_high_schedule]
+
+        dia = profile_data.get("dia", 0.0)
+        peak = profile_data.get("peak", 0)
 
         return ResolvedProfile(
             source_profile_id=pv.remote_id,

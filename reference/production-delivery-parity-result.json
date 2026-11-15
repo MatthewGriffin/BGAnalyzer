@@ -1,0 +1,16 @@
+{
+  "reference_commit": "1393357107a2b27ba153df31d64e745efd771ef2",
+  "cases": 360,
+  "contributions_compared": 960,
+  "iob_activity_values_compared": 2880,
+  "maximum_absolute_difference": 0.0,
+  "scope": "Production resolved-segment conversion and summed IOB/activity; not Android persistence, raw-event semantics, full prep/tuning or physical pump delivery.",
+  "source_hashes": {
+    "src/bganalyzer/autotune/net_basal.py": "b9344c0304723eea2d7d6ae0112aa3af92c320664d872a9732c250c5709e7e7e",
+    "src/bganalyzer/autotune/categorize.py": "3aa1a2945fbc9017258accadacf368577febe746102cb4fe348673bef0395e95",
+    "src/bganalyzer/autotune/models.py": "4a8893a096887ebe11ed1ca5c67019d503a0aa6158f508a35de0a7da484c6245",
+    "src/bganalyzer/autotune/orchestration.py": "864504d6095ea4735474e5a1e0a2a3231dac3196c91840db55cc92c534fd9860",
+    "src/bganalyzer/timeline/insulin.py": "7460f7d66804bcc19436f4f066de2d36c6455a742b7f1a2d8b6c477ad67ae9de",
+    "src/bganalyzer/timeline/basal_delivery.py": "61dbee27bb172b2a2cf9d699c22194f7a95e5844b17caadc2c6cdc63f5ac5947"
+  }
+}

@@ -1,20 +1,17 @@
-"""Unvalidated legacy delivery reconstruction prototype; not a verified AAPS port.
+"""Conservative reported delivery reconstruction; physical delivery is unverified.
 
 Implements resolve_delivery(start_ms, end_ms) -> list[DeliveryInterval]
 as specified in IMPLEMENTATION_PLAN.md section 8.
 
 Upstream commit: 1393357107a2b27ba153df31d64e745efd771ef2
 Reference target: AAPS AutotuneIob.kt. This module has not passed parity.
-Do not infer pump-confirmed delivery from its labels or use it for recommendations.
+Unknown intervals never become confirmed delivery. Numerical conversion is verified separately.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum
 from typing import List, Optional
-from zoneinfo import ZoneInfo
 
-from bganalyzer.autotune.models import LocalInsulin
 from bganalyzer.timeline.profiles import ProfileTimeline, ResolvedProfile
 
 
@@ -54,7 +51,7 @@ class DeliveryInterval:
         """Total insulin delivered in this interval."""
         if self.origin in (DeliveryOrigin.BOLUS, DeliveryOrigin.SMB, DeliveryOrigin.EXTENDED_BOLUS):
             return self.rate_u_hr
-        return self.rate_u_hr * self.duration_minutes / 60.0
+        return self.rate_u_hr * (self.end_ms - self.start_ms) / 3600000.0
 
 
 @dataclass
@@ -70,284 +67,114 @@ class BolusDelivery:
 
 
 class DeliveryTimeline:
-    """Reconstructs insulin delivery timeline from treatments and profile.
+    """Reported interval evidence; gaps and ambiguous transitions remain unknown."""
 
-    Builds boundaries at:
-    - Profile transitions
-    - Basal schedule transitions
-    - Temp basal start/end/cancellation
-    - Suspend/resume
-    - Pod change
-    """
-
-    def __init__(
-        self,
-        treatments: List[dict],  # Raw treatment records from DB
-        profile_timeline: 'ProfileTimeline',
-        default_timezone: str = "UTC",
-    ):
+    def __init__(self, treatments, profile_timeline, default_timezone="UTC"):
         self.treatments = treatments
         self.profile_timeline = profile_timeline
         self.default_timezone = default_timezone
-        self._delivery_intervals: List[DeliveryInterval] = []
-        self._bolus_deliveries: List[BolusDelivery] = []
-        self._build()
+        self._cache = {}
 
-    def _build(self):
-        """Build delivery intervals from treatments."""
-        # Separate treatments by type
-        temp_basals = [t for t in self.treatments if t.get("kind") == "temp_basal"]
-        boluses = [t for t in self.treatments if t.get("kind") in ("bolus", "smb")]
-        suspends = [t for t in self.treatments if t.get("kind") == "suspend"]
-        resumes = [t for t in self.treatments if t.get("kind") == "resume"]
-
-        # Process temp basals with AAPS splitting logic
-        self._process_temp_basals(temp_basals)
-
-        # Process boluses/SMB
-        self._process_boluses(boluses)
-
-        # Process suspend/resume
-        self._process_suspends(suspends, resumes)
-
-        # Fill gaps with scheduled basal (assumed)
-        self._fill_scheduled_gaps()
-
-        # Sort by start time
-        self._delivery_intervals.sort(key=lambda x: x.start_ms)
-
-    def _process_temp_basals(self, temp_basals: List[dict]):
-        """Process temp basal records with AAPS splitting logic.
-
-        Port of AutotuneIob.toSplittedTimestampTB:
-        - Split across hour boundaries
-        - Convert percentage to absolute using profile at each boundary
-        - Handle cancellations (endId)
-        """
-        for tb in temp_basals:
-            if not tb.get("valid", True):
+    def _records(self, start_ms, end_ms):
+        import json
+        records = []
+        for treatment in self.treatments:
+            if treatment['event_ms'] >= end_ms:
                 continue
-
-            start = tb["event_ms"]
-            duration = tb.get("duration", tb.get("durationInMilliseconds", 30 * 60000))
-            rate = tb.get("rate", 0.0)
-            is_absolute = tb.get("absolute", True) or not tb.get("percent", False)
-            percent = tb.get("percent", 0.0)
-            end_id = tb.get("endId")
-            source_id = tb.get("remote_id", tb.get("id", ""))
-
-            # Handle cancellation
-            end = start + duration
-            if end_id:
-                # Find cancellation record
-                cancel = next((t for t in self.treatments
-                               if t.get("remote_id") == end_id or t.get("id") == end_id), None)
-                if cancel and cancel.get("event_ms"):
-                    end = min(end, cancel["event_ms"])
-
-            # Split at hour boundaries (AAPS uses 60-min intervals for accuracy)
-            self._split_and_add_temp_basal(start, end, rate, is_absolute, percent, source_id)
-
-    def _split_and_add_temp_basal(
-        self,
-        start: int,
-        end: int,
-        rate: float,
-        is_absolute: bool,
-        percent: float,
-        source_id: str,
-    ):
-        """Split temp basal at hour boundaries and convert to absolute rates."""
-        current = start
-        cut_ms = 60 * 60 * 1000  # 1 hour in ms
-
-        while current < end:
-            # Find hour boundary
-            next_boundary = ((current // cut_ms) + 1) * cut_ms
-            segment_end = min(end, next_boundary)
-
-            # Get profile basal at this segment start
-            resolved = self.profile_timeline.resolve_profile(current)
-            profile_basal = 0.0
-            if isinstance(resolved, ResolvedProfile):
-                # Get basal rate at this hour
-                hour = (current % 86400000) // 3600000
-                for time_str, val in resolved.basal_schedule:
-                    h, m = map(int, time_str.split(":"))
-                    if h == hour:
-                        profile_basal = val
-                        break
-
-            # Convert rate to absolute
-            if is_absolute:
-                absolute_rate = rate
-            else:
-                absolute_rate = (percent / 100.0) * profile_basal if profile_basal > 0 else 0.0
-
-            # Net basal = temp basal - scheduled basal (AAPS approach)
-            net_basal = absolute_rate - profile_basal
-
-            self._delivery_intervals.append(DeliveryInterval(
-                start_ms=current,
-                end_ms=segment_end,
-                rate_u_hr=net_basal,
-                origin=DeliveryOrigin.REPORTED_TEMP,
-                source_ids=[source_id],
-                quality="confirmed" if net_basal != 0 else "assumed",
-                profile_basal_at_start=profile_basal,
-                is_percentage=not is_absolute,
-                percent_value=percent if not is_absolute else 0.0,
-            ))
-
-            current = segment_end
-
-    def _process_boluses(self, boluses: List[dict]):
-        """Process bolus and SMB treatments."""
-        for bolus in boluses:
-            if not bolus.get("valid", True):
+            if treatment.get('end_ms') is not None and treatment['end_ms'] <= start_ms:
                 continue
-
-            amount = bolus.get("insulin_u", bolus.get("amount_u", 0.0))
-            if amount is None:
-                amount = 0.0
-            elif isinstance(amount, str):
-                try:
-                    amount = float(amount)
-                except (ValueError, TypeError):
-                    amount = 0.0
-            if amount <= 0:
+            if treatment.get('end_ms') is None and treatment['event_ms'] < start_ms:
                 continue
-
-            event_ms = bolus["event_ms"]
-            is_smb = bolus.get("kind") == "smb" or bolus.get("isSMB", False)
-            source_id = bolus.get("remote_id", bolus.get("id", ""))
-
-            delivery = BolusDelivery(
-                event_ms=event_ms,
-                amount_u=amount,
-                origin=DeliveryOrigin.SMB if is_smb else DeliveryOrigin.BOLUS,
-                source_id=source_id,
-                is_valid=bolus.get("valid", True),
-                delivery_status=bolus.get("delivery_status", "unknown"),
-            )
-            self._bolus_deliveries.append(delivery)
-
-    def _process_suspends(self, suspends: List[dict], resumes: List[dict]):
-        """Process suspend/resume events."""
-        # Match suspends with resumes
-        for suspend in suspends:
-            if not suspend.get("valid", True):
+            # Withdrawn revisions are not delivered events. Disappeared records
+            # retain an uncertainty barrier instead of silently disappearing.
+            if not treatment.get('valid', True) and not treatment.get('presence_unknown'):
                 continue
-            start = suspend["event_ms"]
-            # Find matching resume
-            resume = next((r for r in resumes if r.get("event_ms", 0) > start), None)
-            end = resume["event_ms"] if resume else None
+            payload = treatment.get('payload_json')
+            if payload is None:
+                kind = treatment.get('kind')
+                event = {'temp_basal': 'Temp Basal', 'suspend': 'Suspend', 'resume': 'Resume',
+                         'site_change': 'Site Change', 'insulin_change': 'Insulin Change'}.get(kind)
+                if not event:
+                    continue
+                data = {'eventType': event, 'isValid': bool(treatment.get('valid', True))}
+                if kind == 'temp_basal':
+                    if treatment.get('end_ms') is not None:
+                        data['durationInMilliseconds'] = treatment['end_ms'] - treatment['event_ms']
+                    if treatment.get('percent') is not None:
+                        data['percent'] = treatment['percent']
+                    elif treatment.get('rate_u_h') is not None:
+                        data['absolute'] = treatment['rate_u_h']
+                payload = json.dumps(data)
+            records.append(dict(remote_id=treatment['remote_id'], revision_hash=treatment.get('revision_hash', ''),
+                                event_ms=treatment['event_ms'], payload_json=payload,
+                                is_valid=bool(treatment.get('valid', True)),
+                                presence_unknown=treatment.get('presence_unknown', False)))
+        return records
 
-            self._delivery_intervals.append(DeliveryInterval(
-                start_ms=start,
-                end_ms=end or start,
-                rate_u_hr=0.0,
-                origin=DeliveryOrigin.REPORTED_SUSPEND,
-                source_ids=[suspend.get("remote_id", "")],
-                quality="confirmed",
-            ))
-
-    def _fill_scheduled_gaps(self):
-        """Fill gaps with scheduled basal (assumed delivery).
-
-        Only fills where no temp basal is recorded.
-        Marks as SCHEDULED_ASSUMED with quality 'assumed'.
-        """
-        if not self._delivery_intervals:
-            return
-
-        # Sort intervals by start time
-        self._delivery_intervals.sort(key=lambda x: x.start_ms)
-
-        # Fill gaps between intervals with scheduled basal
-        for i in range(len(self._delivery_intervals) - 1):
-            current = self._delivery_intervals[i]
-            next_interval = self._delivery_intervals[i + 1]
-
-            # Skip if intervals overlap or are adjacent
-            if current.end_ms >= next_interval.start_ms:
+    def reported_segments(self, start_ms, end_ms):
+        from bganalyzer.timeline.basal_delivery import reported_basal_segments
+        key = (start_ms, end_ms)
+        if key in self._cache:
+            return self._cache[key]
+        boundaries = {start_ms, end_ms}
+        for act in self.profile_timeline.activations:
+            boundaries.update(t for t in (act.start_ms, act.end_ms) if t is not None and start_ms < t < end_ms)
+        boundaries.update(p.effective_from_ms for p in self.profile_timeline.store_versions
+                          if start_ms < p.effective_from_ms < end_ms)
+        times = sorted(boundaries)
+        profiles = []
+        for lo, hi in zip(times, times[1:]):
+            profile = self.profile_timeline.resolve_profile(lo)
+            if not isinstance(profile, ResolvedProfile):
                 continue
-
-            # Skip if current interval is a suspend (no basal during suspend)
-            if current.origin == DeliveryOrigin.REPORTED_SUSPEND:
-                continue
-
-            # Fill the gap with scheduled basal
-            gap_start = current.end_ms
-            gap_end = next_interval.start_ms
-
-            # Get profile basal at gap start
-            resolved = self.profile_timeline.resolve_profile(gap_start)
-            profile_basal = 0.0
-            if isinstance(resolved, ResolvedProfile):
-                hour = (gap_start % 86400000) // 3600000
-                for time_str, val in resolved.basal_schedule:
-                    h, m = map(int, time_str.split(":"))
-                    if h == hour:
-                        profile_basal = val
-                        break
-
-            # Only add if there's a meaningful gap and basal rate
-            if gap_end - gap_start > 60000 and profile_basal > 0:  # At least 1 minute gap
-                self._delivery_intervals.append(DeliveryInterval(
-                    start_ms=gap_start,
-                    end_ms=gap_end,
-                    rate_u_hr=profile_basal,
-                    origin=DeliveryOrigin.SCHEDULED_ASSUMED,
-                    source_ids=[],
-                    quality="assumed",
-                    profile_basal_at_start=profile_basal,
-                ))
-
-        # Re-sort after adding gap fillers
-        self._delivery_intervals.sort(key=lambda x: x.start_ms)
-
-    def resolve_delivery(self, start_ms: int, end_ms: int) -> List[DeliveryInterval]:
-        """Get delivery intervals within range."""
-        result = []
-        for d in self._delivery_intervals:
-            if d.start_ms < end_ms and d.end_ms > start_ms:
-                # Clip to range
-                clipped = DeliveryInterval(
-                    start_ms=max(d.start_ms, start_ms),
-                    end_ms=min(d.end_ms, end_ms),
-                    rate_u_hr=d.rate_u_hr,
-                    origin=d.origin,
-                    source_ids=d.source_ids.copy(),
-                    quality=d.quality,
-                    profile_basal_at_start=d.profile_basal_at_start,
-                    is_percentage=d.is_percentage,
-                    percent_value=d.percent_value,
-                )
-                result.append(clipped)
+            profiles.append({'start_ms': lo, 'end_ms': hi,
+                             'source_refs': [{'remote_id': profile.source_profile_id,
+                                              'revision_hash': profile.activation_evidence.profile_version.revision_hash}],
+                             'profile': {'timezone': profile.timezone,
+                                         'basal': [{'time': time, 'value': rate} for time, rate in profile.basal_schedule]}})
+        result = reported_basal_segments(self._records(start_ms, end_ms), profiles, start_ms, end_ms)
+        self._cache[key] = result
         return result
 
-    def get_bolus_deliveries(self, start_ms: int, end_ms: int) -> List[BolusDelivery]:
-        """Get bolus deliveries within range."""
-        return [b for b in self._bolus_deliveries
-                if start_ms <= b.event_ms < end_ms]
+    def issues_in_range(self, start_ms, end_ms):
+        # Ordinary gaps are recorded as unverified coverage, separately from
+        # explicit ambiguous/conflicting events that invalidate a tuning day.
+        return [s for s in self.reported_segments(start_ms, end_ms)['segments']
+                if s['reason'] not in ('reported_rate_only', 'no_reported_temp_basal')]
+
+    def resolve_delivery(self, start_ms, end_ms):
+        result = []
+        for segment in self.reported_segments(start_ms, end_ms)['segments']:
+            known = segment['rate_u_h'] is not None
+            result.append(DeliveryInterval(
+                start_ms=segment['start_ms'], end_ms=segment['end_ms'],
+                rate_u_hr=segment['rate_u_h'] if known else 0.0,
+                origin=DeliveryOrigin.REPORTED_TEMP if known else DeliveryOrigin.UNKNOWN,
+                source_ids=[r['remote_id'] for r in segment['source_refs']],
+                quality='reported' if known else 'uncertain'))
+        return result
+
+    def get_bolus_deliveries(self, start_ms, end_ms):
+        import math
+        return [BolusDelivery(t['event_ms'], t['insulin_u'],
+                              DeliveryOrigin.SMB if t['kind'] == 'smb' else DeliveryOrigin.BOLUS,
+                              t['remote_id'], delivery_status=t.get('delivery_status', 'unknown'))
+                for t in self.treatments if t.get('kind') in ('bolus', 'smb')
+                and t.get('valid', True) and not t.get('presence_unknown')
+                and t.get('delivery_status') != 'cancelled' and start_ms <= t['event_ms'] < end_ms
+                and type(t.get('insulin_u')) in (int, float) and math.isfinite(t['insulin_u']) and t['insulin_u'] > 0]
 
 
-def build_delivery_timeline(
-    conn,
-    source_id: str,
-    start_ms: int,
-    end_ms: int,
-    profile_timeline: 'ProfileTimeline',
-) -> DeliveryTimeline:
-    """Build DeliveryTimeline from database treatments."""
-    treatments = conn.execute("""
-        SELECT remote_id, revision_hash, event_ms, end_ms, kind,
-               insulin_u, carbs_g, rate_u_h, percent, delivery_status, valid
-        FROM treatments
-        WHERE source_id = ? AND event_ms >= ? AND event_ms < ?
-        ORDER BY event_ms
-    """, (source_id, start_ms, end_ms)).fetchall()
-
-    treatment_list = [dict(row) for row in treatments]
-    return DeliveryTimeline(treatment_list, profile_timeline)
+def build_delivery_timeline(conn, source_id, start_ms, end_ms, profile_timeline):
+    rows = conn.execute("""
+        SELECT t.remote_id,t.revision_hash,t.event_ms,t.end_ms,t.kind,t.insulin_u,t.carbs_g,
+               t.rate_u_h,t.percent,t.delivery_status,t.valid,r.payload_json,
+               EXISTS(SELECT 1 FROM sync_disappearances d WHERE d.source_id=t.source_id
+                   AND d.collection='treatments' AND d.remote_id=t.remote_id AND d.resolved_ms IS NULL) AS presence_unknown
+        FROM treatments t LEFT JOIN raw_records r ON r.source_id=t.source_id
+            AND r.collection='treatments' AND r.remote_id=t.remote_id
+            AND r.revision_hash=t.revision_hash AND r.is_current=1
+        WHERE t.source_id=? AND t.event_ms<?
+        ORDER BY t.event_ms
+    """, (source_id, end_ms)).fetchall()
+    return DeliveryTimeline([dict(row) for row in rows], profile_timeline)

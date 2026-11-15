@@ -45,6 +45,7 @@ class AutotuneInput:
     pump_profile: ATProfile
     analysis_days: List[AnalysisDay]
     preferences: dict
+    baseline_evidence: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -103,7 +104,7 @@ def build_analysis_snapshot(
     # Retain earlier cached insulin for per-day DIA lookback. Timestamp slicing
     # happens after the day's explicit profile DIA is known; UI limits never apply.
     treatment_rows = conn.execute("""
-        SELECT remote_id, event_ms, end_ms, kind, insulin_u, carbs_g,
+        SELECT remote_id, revision_hash, event_ms, end_ms, kind, insulin_u, carbs_g,
                rate_u_h, percent, delivery_status, valid
         FROM treatments
         WHERE source_id = ? AND event_ms < ? AND valid=1
@@ -149,12 +150,19 @@ def build_analysis_snapshot(
             timestamp=row["event_ms"],
             amount=insulin_u,
             is_valid=row["valid"],
-            type=row["kind"],
+            type=row["kind"], source_id=row["remote_id"], revision_hash=row["revision_hash"],
         )
+        # Carbs and insulin can coexist on one treatment record.
+        # Preserve carbs independently, even if another treatment field is unusable.
+        if carbs_g > 0:
+            carb_entries.append(CarbEntry(
+                timestamp=row["event_ms"], amount=carbs_g, is_valid=row["valid"],
+            ))
         if row["kind"] in ("bolus", "smb"):
             t.is_bolus = True
             t.amount = insulin_u
-            treatments.append(t)
+            if row["delivery_status"] != "cancelled":
+                treatments.append(t)
         elif row["kind"] == "temp_basal":
             if row["end_ms"] is None or row["end_ms"] <= row["event_ms"]:
                 continue  # No invented 30-minute duration.
@@ -165,45 +173,25 @@ def build_analysis_snapshot(
                 duration=row["end_ms"] - row["event_ms"],
                 rate=float(row["percent"]) + 100.0 if row["percent"] is not None else rate_u_h,
                 is_absolute=row["percent"] is None,
-                is_valid=row["valid"],
-            ))
-        elif row["kind"] == "carbs" or row["carbs_g"]:
-            carb_entries.append(CarbEntry(
-                timestamp=row["event_ms"],
-                amount=carbs_g,
-                is_valid=row["valid"],
+                is_valid=row["valid"], source_id=row["remote_id"], revision_hash=row["revision_hash"],
             ))
 
-    # Get baseline profile (earliest profile in range)
-    baseline_rows = conn.execute("""
-        SELECT normalized_json FROM profile_versions
-        WHERE source_id = ? AND effective_from_ms <= ?
-        ORDER BY effective_from_ms
-        LIMIT 1
-    """, (source_id, start_ms)).fetchone()
-
-    if not baseline_rows:
+    # Initialize tuning and its bounds from the same latest resolved profile.
+    # Historical daily profiles below remain separate inputs for interpreting delivery.
+    resolved = profile_timeline.resolve_profile(end_ms - 1)
+    if not hasattr(resolved, "basal_schedule"):
         return None
-
-    baseline_data = baseline_rows["normalized_json"]
-    if isinstance(baseline_data, str):
-        baseline_data = json.loads(baseline_data)
-    baseline_profile = _parse_atprofile(baseline_data, timezone)
-
-    # Get current pump profile (latest)
-    pump_rows = conn.execute("""
-        SELECT normalized_json FROM profile_versions
-        WHERE source_id = ? AND effective_from_ms <= ?
-        ORDER BY effective_from_ms DESC
-        LIMIT 1
-    """, (source_id, end_ms)).fetchone()
-
-    pump_profile = baseline_profile
-    if pump_rows:
-        pump_data = pump_rows["normalized_json"]
-        if isinstance(pump_data, str):
-            pump_data = json.loads(pump_data)
-        pump_profile = _parse_atprofile(pump_data, timezone)
+    baseline_profile = _resolved_to_atprofile(resolved)
+    pump_profile = baseline_profile.copy()
+    activation = resolved.activation_evidence
+    baseline_evidence = {
+        "as_of_ms": end_ms - 1,
+        "effective_from_ms": activation.start_ms,
+        "source_profile_id": resolved.source_profile_id,
+        "profile_hash": resolved.profile_hash,
+        "certainty": activation.certainty,
+        "origin": activation.origin,
+    }
 
     # Split into local days
     analysis_days = _split_into_days(
@@ -212,11 +200,41 @@ def build_analysis_snapshot(
         start_ms, end_ms, timezone, cancelled
     )
 
+    from bganalyzer.autotune.profile_period import current_period_start
+
+    lookback_ms = int((baseline_profile.dia + 2) * 3600000)
+    scan_start = max(0, start_ms - lookback_ms)
+    period_start = current_period_start(profile_timeline, scan_start, end_ms, resolved)
+    from bganalyzer.db.exclusions import active_exclusions, overlapping_exclusions
+    user_exclusions = active_exclusions(conn, source_id)
+    excluded = []
+    retained = []
+    for day in analysis_days:
+        day_end = day_bounds(datetime.fromtimestamp(day.date_ms / 1000, ZoneInfo(timezone)).date(), timezone)[1]
+        user_overlap = overlapping_exclusions(user_exclusions, day.date_ms - lookback_ms, day_end)
+        if user_overlap:
+            excluded.append({"date_ms": day.date_ms, "reason": "User exclusion or affected insulin lookback",
+                             "user_exclusions": user_overlap})
+        elif delivery_timeline.issues_in_range(day.date_ms - lookback_ms, day_end):
+            excluded.append({"date_ms": day.date_ms, "reason": "Ambiguous reported insulin delivery",
+                             "delivery_issues": delivery_timeline.issues_in_range(day.date_ms - lookback_ms, day_end)})
+        elif day.date_ms - lookback_ms < period_start:
+            excluded.append({"date_ms": day.date_ms, "reason": "Previous settings or profile change within insulin lookback"})
+        elif day.date_ms < start_ms or day_end > end_ms:
+            excluded.append({"date_ms": day.date_ms, "reason": "Incomplete local day"})
+        else:
+            retained.append(day)
+    analysis_days = retained
+    baseline_evidence.update(current_period_start_ms=period_start, excluded_days=excluded,
+                             retained_days=len(retained), candidate_days=len(retained) + len(excluded),
+                             glucose_records=len(glucose_readings), lookback_hours=lookback_ms / 3600000,
+                             user_exclusions=overlapping_exclusions(user_exclusions, scan_start, end_ms))
     preferences = _load_preferences(conn, source_id)
 
     return AutotuneInput(
         baseline_profile=baseline_profile,
         pump_profile=pump_profile,
+        baseline_evidence=baseline_evidence,
         analysis_days=analysis_days,
         preferences=preferences,
     )
@@ -384,6 +402,7 @@ def _resolved_to_atprofile(resolved) -> ATProfile:
         dia=float(resolved.dia_hours),
         peak=int(resolved.peak_minutes),
         timezone=resolved.timezone,
+        basal_schedule=list(resolved.basal_schedule),
     )
     profile.localInsulin = LocalInsulin(None, resolved.peak_minutes, resolved.dia_hours)
     profile.isValid = True
@@ -400,6 +419,39 @@ def _load_preferences(conn, source_id: str) -> dict:
         "autotune_tune_insulin_curve": False,
         "autotune_categorize_uam_as_basal": False,
     }
+
+
+def resolve_daily_insulin(input_data, observations):
+    """Use dated evidence spanning a day's insulin lookback; never copy current settings backwards."""
+    retained, excluded = [], []
+    for day in input_data.analysis_days:
+        profile = day.profile
+        try:
+            if profile.dia <= 0:
+                raise ValueError("Historical DIA is unknown")
+            if profile.peak <= 0:
+                lo = day.date_ms - int((profile.dia + 2) * 3600000)
+                hi = day_bounds(datetime.fromtimestamp(day.date_ms / 1000, ZoneInfo(profile.timezone)).date(), profile.timezone)[1]
+                prior = [o for o in observations if o['event_ms'] <= lo]
+                if not prior:
+                    raise ValueError("No peak evidence at the start of the insulin lookback")
+                latest_time = max(o['event_ms'] for o in prior)
+                context = [o for o in observations if latest_time <= o['event_ms'] < hi]
+                peaks = {o.get('peak_minutes') for o in context}
+                if any(o.get('issues') for o in context) or len(peaks) != 1 or None in peaks:
+                    raise ValueError("Historical peak evidence is missing, conflicting or changed")
+                profile.peak = next(iter(peaks))
+            insulin = LocalInsulin(None, profile.peak, profile.dia)
+            insulin.validate_parameters()
+            profile.localInsulin = insulin
+            day.local_insulin = insulin
+            retained.append(day)
+        except ValueError as exc:
+            excluded.append({"date_ms": day.date_ms, "reason": f"Historical insulin settings unresolved: {exc}"})
+    input_data.analysis_days = retained
+    input_data.baseline_evidence.setdefault('excluded_days', []).extend(excluded)
+    input_data.baseline_evidence['retained_days'] = len(retained)
+    return excluded
 
 
 def run_full_autotune(
@@ -422,6 +474,7 @@ def run_full_autotune(
     total = len(input_data.analysis_days)
     for pos, day in enumerate(input_data.analysis_days):
         throw_if_cancelled(cancelled)
+        day.local_insulin.validate_parameters()
         prepped = categorize_day(
             day.glucose,
             day.treatments,

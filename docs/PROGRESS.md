@@ -251,3 +251,15 @@ The codebase still has inherited broad-lint/type-quality debt. Passing the selec
 ## Latest verification result
 
 30 regression tests passed. Undefined-name/syntax checks passed. Both the Python wheel and source distribution built successfully. Offscreen Qt emitted a timer warning at interpreter teardown; startup and UI assertions passed, but a real Wayland acceptance run remains required. Flatpak packaging and a complete strict-type/lint pass have not been performed.
+
+### Current-profile tuning and visible ISF (14 September 2026)
+
+Tuning now uses only complete local days in the contiguous period with the latest resolved settings, including matching DIA-plus-two-hour insulin context. Basal, IC, ISF, targets, DIA, peak and timezone changes split periods; identical uploads do not. Days crossing a change, prior-setting days and incomplete days are excluded and counted in baseline evidence. Original report history remains cached. Existing eligibility checks still apply to the retained evidence.
+
+ISF remains visible as a calculated, unvalidated estimate, with daily direction counts and a plain-English explanation. Missing usable ISF inputs produce an explicit unavailable result rather than endorsing the baseline. The engine retains ISF when all predicted insulin effects are zero. Repeated runs restart from the uploaded baseline; meal preparation now consumes a sorted copy rather than mutating the input carb list. Multi-day tuning preserves timezone.
+
+This does not establish complete raw-pipeline AAPS parity or correction-episode validation. Settings absent from resolved profile history, such as unrecorded activity or loop configuration changes, are not reconstructed by this filter. Profile-period filtering deliberately withholds mixed days rather than claiming exact within-day reconstruction.
+
+### Historical insulin-curve crash repair
+
+Daily preparation previously received peak=0 even when the baseline peak had been resolved from device uploads. Daily missing peaks now require consistent dated observations covering the insulin lookback through the day; current settings are not copied backwards. Unresolved days are excluded and reported. Curve evaluation rejects unknown, nonfinite and singular DIA/peak combinations explicitly before division. No fallback insulin parameters were added.

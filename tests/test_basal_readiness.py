@@ -21,7 +21,7 @@ def test_readiness_reports_explicit_blockers_not_vacuous_pass(config, repo):
     assert result["recommendations"] == []
 
 
-def test_eligibility_stale_and_insufficient_day_paths_do_not_crash():
+def test_eligibility_stale_and_insufficient_day_paths_do_not_crash(monkeypatch):
     from bganalyzer.recommendations.eligibility import (
         EligibilityChecker,
         EligibilityStatus,
@@ -32,6 +32,7 @@ def test_eligibility_stale_and_insufficient_day_paths_do_not_crash():
         tuned_days=[],
         baseline_profile=SimpleNamespace(dia=0, peak=0),
     )
+    monkeypatch.setattr(EligibilityChecker, "_has_validated_policy", lambda self: True)
     checker = EligibilityChecker()
     checker._check_connection_fresh = lambda sq, t: False
     stale = checker.check_eligibility(
@@ -303,11 +304,11 @@ def test_descriptive_candidates_surface_autotune_deviation_when_data_gate_withho
     from types import SimpleNamespace
 
     baseline = SimpleNamespace(
-        basal=[1.0] * 24, ic=10.0, isf=50.0, dia=6.0, peak=75,
+        basal=[1.0] * 24, ic=10.0, isf=50.0, dia=6.0, peak=75, timezone="UTC",
         localInsulin=SimpleNamespace(name="OREF_RAPID_ACTING"),
     )
     final = SimpleNamespace(
-        basal=[1.0] * 24, ic=10.0, isf=50.0, dia=6.0, peak=75,
+        basal=[1.0] * 24, ic=10.0, isf=50.0, dia=6.0, peak=75, timezone="UTC",
         localInsulin=SimpleNamespace(name="OREF_RAPID_ACTING"),
     )
     # A real basal deviation on hour 3 so the candidate list is non-empty.
@@ -318,7 +319,7 @@ def test_descriptive_candidates_surface_autotune_deviation_when_data_gate_withho
         tuned_days=[SimpleNamespace(basal=final.basal, ic=final.ic, isf=final.isf)],
         baseline_profile=baseline,
         final_profile=final,
-        day_stats=[],
+        day_stats=[], prepped_days=[],
     )
     policy = get_policy("policy-v1")
     eligibility = SimpleNamespace(
@@ -342,7 +343,7 @@ def test_descriptive_candidates_surface_autotune_deviation_when_data_gate_withho
     # Full-confidence path carries no reason codes.
     full = _generate_candidates(output, baseline, policy, eligibility)
     for c in full:
-        assert c["confidence"] == "full"
+        assert c["confidence"] == ("low" if c["family"] == "isf" else "full")
         assert c["reason_codes"] == []
 
 
@@ -411,7 +412,7 @@ def test_peak_overlaid_from_single_valued_device_evidence(config, repo):
     assert provenance["baseline_dia_source"] == "profile store"
     assert provenance["baseline_peak_minutes"] == 75
     assert "pinned_plugin_constant" in provenance["baseline_peak_source"]
-    assert "no analysis days" in result["message"]
+    assert "No glucose records were available" in result["message"]
     assert "DIA 5" in format_readiness(result)
 
 
@@ -1074,11 +1075,12 @@ def test_cgm_coverage_clips_to_range_end_for_partial_today():
     assert checker._window_coverage([], base, end)["coverage_pct"] == 0.0
 
 
-def test_eligible_days_gate_on_tuned_and_covered_days():
+def test_eligible_days_gate_on_tuned_and_covered_days(monkeypatch):
     from bganalyzer.recommendations.eligibility import (
         EligibilityChecker, EligibilityStatus, ReasonCode,
     )
 
+    monkeypatch.setattr(EligibilityChecker, "_has_validated_policy", lambda self: True)
     checker = EligibilityChecker()
     base = _utc_day_start(1780000000000)
     readings = []

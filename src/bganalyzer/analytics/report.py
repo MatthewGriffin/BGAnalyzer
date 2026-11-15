@@ -34,6 +34,7 @@ class ReportSnapshot:
     graph_end_ms: int | None = None
     iob_points: list[tuple[int, float | None]] = field(default_factory=list)
     iob_observations: list[dict] = field(default_factory=list)
+    analysis_exclusions: list[dict] = field(default_factory=list)
 
 
 def load_report(config, request_id, start, end):
@@ -47,6 +48,8 @@ def load_report(config, request_id, start, end):
         if source is None:
             return snapshot
         snapshot.source_id = source[0]
+        from bganalyzer.db.exclusions import active_exclusions, overlapping_exclusions
+        snapshot.analysis_exclusions = overlapping_exclusions(active_exclusions(conn, source[0]), start, end)
         rows = conn.execute(
             """SELECT g.* FROM glucose g WHERE source_id=? AND event_ms>=? AND event_ms<?
             AND NOT EXISTS(SELECT 1 FROM sync_disappearances d WHERE d.source_id=g.source_id
@@ -125,6 +128,10 @@ def quality_text(snapshot, timezone):
     if snapshot.source_id is None:
         return "No records imported for this source. Configure the connection to begin."
     sections = []
+    if snapshot.analysis_exclusions:
+        sections.append("Manual analysis exclusions (descriptive metrics still include these days):\n" + "\n".join(
+            f"{item['local_date']} ({item['timezone']}): {item['reason']}"
+            for item in snapshot.analysis_exclusions))
     run = snapshot.quality.get("last_run")
     if run:
         sections.append(

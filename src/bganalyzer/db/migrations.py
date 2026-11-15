@@ -340,3 +340,17 @@ def backup_database(config, backup_path: str) -> None:
     with sqlite3.connect(backup_path) as destination:
         conn.backup(destination)
     logger.info("Database backed up", path=backup_path)
+
+
+@migration(3, "analysis_day_exclusions")
+def migration_003_exclusions(conn: sqlite3.Connection) -> None:
+    conn.execute("BEGIN IMMEDIATE")
+    conn.execute("""CREATE TABLE analysis_exclusions (
+        source_id TEXT NOT NULL REFERENCES sources(id),
+        local_date TEXT NOT NULL, timezone TEXT NOT NULL,
+        start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL,
+        reason TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1,
+        updated_ms INTEGER NOT NULL,
+        PRIMARY KEY(source_id, local_date, timezone),
+        CHECK(end_ms > start_ms), CHECK(active IN (0,1))
+    )""")

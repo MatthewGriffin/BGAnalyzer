@@ -161,6 +161,24 @@ class MainWindow(QMainWindow):
             navigation.addWidget(widget)
         navigation.addStretch()
         layout.addLayout(navigation)
+        exclusion_controls = QHBoxLayout()
+        self.exclusion_reason = QComboBox()
+        self.exclusion_reason.setEditable(True)
+        self.exclusion_reason.addItems(["Pod failure", "Suspected pod leakage", "Illness", "Unreliable data"])
+        self.exclude_day_button = QPushButton("Exclude selected day from analysis")
+        self.exclude_day_button.clicked.connect(self._exclude_graph_day)
+        exclusion_controls.addWidget(self.exclusion_reason)
+        exclusion_controls.addWidget(self.exclude_day_button)
+        self.excluded_days = QComboBox()
+        self.excluded_days.setMinimumContentsLength(24)
+        self.restore_day_button = QPushButton("Restore selected exclusion")
+        self.restore_day_button.clicked.connect(self._restore_excluded_day)
+        exclusion_controls.addWidget(self.excluded_days, 1)
+        exclusion_controls.addWidget(self.restore_day_button)
+        layout.addLayout(exclusion_controls)
+        self.exclusion_status = QLabel()
+        self.exclusion_status.setWordWrap(True)
+        layout.addWidget(self.exclusion_status)
         self.graph_message = QLabel()
         layout.addWidget(self.graph_message)
         self.plot = pg.PlotWidget(viewBox=LinkedValueViewBox(), axisItems={"bottom": LocalDayAxis(self.config.ui.timezone)})
@@ -181,6 +199,66 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.plot, 1)
         self._event_timeline(layout)
 
+    def _refresh_exclusion_controls(self):
+        from bganalyzer.db.connection import get_connection
+        from bganalyzer.db.exclusions import active_exclusions, overlapping_exclusions
+        source = getattr(self._report_snapshot, "source_id", None)
+        exclusions = active_exclusions(get_connection(self.config), source) if source else []
+        self.excluded_days.clear()
+        for item in exclusions:
+            self.excluded_days.addItem(f"{item['local_date']} ({item['timezone']}) — {item['reason']}", item)
+        self.exclude_day_button.setEnabled(bool(source))
+        self.restore_day_button.setEnabled(bool(exclusions))
+        lo, hi = day_bounds(self.graph_date.date().toPython(), self.config.ui.timezone)
+        matches = overlapping_exclusions(exclusions, lo, hi)
+        if matches:
+            self.exclusion_status.setText("EXCLUDED FROM ANALYSIS: " + "; ".join(item['reason'] for item in matches)
+                + ". Records remain visible. Analysis days whose insulin lookback overlaps this day are also excluded.")
+        else:
+            self.exclusion_status.setText("This graph day has no manual exclusion. Exclusions affect tuning, not the displayed records or descriptive report metrics.")
+
+    def _exclusions_changed(self):
+        self._basal_got_result = True
+        self._basal_request_id = None
+        self._basal_pending = False
+        if self.basal_worker is not None:
+            self.basal_worker.requestInterruption()
+        self.basal_table.setRowCount(0)
+        self.basal_details.setPlainText("Exclusions changed. Run analysis again to use the updated selection.")
+        self.basal_status.setText("Exclusions changed — previous results cleared. Run analysis again.")
+        self._refresh_exclusion_controls()
+        self.refresh_cached()
+
+    def _exclude_graph_day(self):
+        from bganalyzer.db.exclusions import set_day_exclusion
+        source = getattr(self._report_snapshot, "source_id", None)
+        if not source:
+            return
+        try:
+            set_day_exclusion(self.config, source, self.graph_date.date().toPython(),
+                              self.config.ui.timezone, self.exclusion_reason.currentText())
+        except ValueError as exc:
+            self.exclusion_status.setText(str(exc))
+            return
+        except Exception as exc:
+            self.exclusion_status.setText(f"Could not save exclusion: {type(exc).__name__}")
+            return
+        self._exclusions_changed()
+
+    def _restore_excluded_day(self):
+        from datetime import date
+        from bganalyzer.db.exclusions import set_day_exclusion
+        item = self.excluded_days.currentData()
+        if not item:
+            return
+        try:
+            set_day_exclusion(self.config, item['source_id'], date.fromisoformat(item['local_date']),
+                              item['timezone'], item['reason'], active=False)
+        except Exception as exc:
+            self.exclusion_status.setText(f"Could not restore exclusion: {type(exc).__name__}")
+            return
+        self._exclusions_changed()
+
     def _resize_iob_view(self):
         self.iob_view.setGeometry(self.plot.getViewBox().sceneBoundingRect())
         self.iob_view.linkedViewChanged(self.plot.getViewBox(), self.iob_view.XAxis)
@@ -188,8 +266,12 @@ class MainWindow(QMainWindow):
     def _render_iob(self, snapshot):
         x, y = [], []
         previous = None
+        # Accommodate slower uploader cadences without connecting long outages.
+        stamps = [stamp for stamp, value in snapshot.iob_points if value is not None]
+        intervals = [b - a for a, b in zip(stamps, stamps[1:]) if 0 < b - a <= 1800000]
+        gap_limit = max(600000, min(1800000, 3 * float(np.median(intervals)))) if intervals else 600000
         for stamp, value in snapshot.iob_points:
-            if previous is not None and stamp - previous > 600000:
+            if previous is not None and stamp - previous > gap_limit:
                 x.append(float("nan"))
                 y.append(float("nan"))
             x.append(stamp / 1000)
@@ -197,7 +279,7 @@ class MainWindow(QMainWindow):
             previous = stamp
         if x:
             self.iob_curve = pg.PlotDataItem(np.array(x), np.array(y), pen=pg.mkPen("#e07a5f", width=2),
-                                            symbol="o", symbolSize=3, connect="finite")
+                                            symbol=None, connect="finite")
             self.iob_view.addItem(self.iob_curve)
             self.iob_view.enableAutoRange(axis=pg.ViewBox.YAxis)
         self._resize_iob_view()
@@ -482,12 +564,12 @@ class MainWindow(QMainWindow):
         self.basal_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.basal_table.itemSelectionChanged.connect(self._show_basal_decision)
         layout.addWidget(self.basal_table)
-        layout.addWidget(QLabel("Why this hour’s change was calculated"))
+        layout.addWidget(QLabel("Why this setting’s change was calculated"))
         self.basal_show_calculations = QCheckBox("Show calculation details and individual readings")
         self.basal_show_calculations.toggled.connect(self._show_basal_decision)
         layout.addWidget(self.basal_show_calculations)
         self.basal_details = QTextBrowser()
-        self.basal_details.setPlainText("Select an hour to inspect its calculation evidence.")
+        self.basal_details.setPlainText("Select a basal hour or carb ratio to see why its change was calculated.")
         layout.addWidget(self.basal_details)
 
     def _start_basal_computation(self):
@@ -558,12 +640,13 @@ class MainWindow(QMainWindow):
             self.basal_status.setText("Cancelled.")
 
     def _basal_progress(self, text):
-        self.basal_status.setText(text)
+        if self._basal_request_id == self._report_request_id:
+            self.basal_status.setText(text)
 
     def _render_basal_table(self, result):
         """Keep hourly evidence separate, including when adjacent rates match."""
         self._basal_display_result = result
-        rows = result.get("recommendations", []) or result.get("descriptive_candidates", [])
+        rows = list(result.get("recommendations", [])) + list(result.get("descriptive_candidates", []))
         self.basal_table.blockSignals(True)
         self.basal_table.setSortingEnabled(False)
         self.basal_table.setRowCount(0)
@@ -571,13 +654,34 @@ class MainWindow(QMainWindow):
         for index, row in enumerate(rows):
             unit = {"basal": "U/hr", "ic": "g/U", "isf": "mg/dL/U"}.get(row.get("family"), "")
             label = row.get("time") or f"{row.get('family', '').upper()} {row.get('segment', '')}"
+            if row.get("family") == "ic":
+                label = "Insulin-to-carb ratio (overall)"
+            elif row.get("family") == "isf":
+                label = "Insulin sensitivity factor (overall)"
             values = [label]
             for key in ("baseline_value", "proposed_value"):
                 value = row.get(key)
-                values.append(f"{value:g} {unit}" if isinstance(value, (int, float)) else "Unavailable")
-            values += [row.get("direction", ""), row.get("status", "")]
+                if isinstance(value, (int, float)):
+                    formatted = f"{value:.2f}" if row.get("family") == "basal" else f"{value:g}"
+                    values.append(f"{formatted} {unit}")
+                else:
+                    values.append("Unavailable")
+            status_label = {"unchanged": "Calculated — unchanged",
+                            "insufficient_evidence": "Insufficient evidence"}.get(
+                                row.get("status"), row.get("status", ""))
+            if row.get("family") == "isf" and row.get("status") in ("candidate", "unchanged"):
+                status_label = "Calculated — unvalidated" if row.get("status") == "candidate" else "Unchanged — unvalidated"
+            support = row.get("hourly_support")
+            if support and row.get('status') == 'candidate':
+                status_label = (f"{support['strength']} · {support['supporting_days']} support / "
+                                f"{support['opposing_days']} oppose")
+            values += [row.get("direction", ""), status_label]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
+                if column in (1, 2) and row.get("family") == "basal":
+                    exact = row.get("baseline_value" if column == 1 else "proposed_value")
+                    if isinstance(exact, (int, float)):
+                        item.setToolTip(f"Exact value: {exact:g} U/hr. Grid display is rounded to two decimals.")
                 if column == 0:
                     item.setData(Qt.ItemDataRole.UserRole, row)
                 self.basal_table.setItem(index, column, item)
@@ -797,6 +901,7 @@ class MainWindow(QMainWindow):
         if self._close_pending or snapshot.request_id != self._report_request_id:
             return
         self._report_snapshot = snapshot
+        self._refresh_exclusion_controls()
         if self._basal_pending and not self._close_pending:
             if self._snapshot_days(snapshot) == self.basal_days.value():
                 self._basal_pending = False
@@ -916,6 +1021,7 @@ class MainWindow(QMainWindow):
                         "data_revision": self._report_snapshot.data_revision,
                         "explanation": self._report_snapshot.explanation,
                         "quality": self._report_snapshot.quality,
+                        "analysis_exclusions": self._report_snapshot.analysis_exclusions,
                         "limitations": [
                             "Descriptive glucose summary only",
                             "No validated profile recommendations",

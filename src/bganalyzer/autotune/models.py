@@ -130,11 +130,23 @@ class ATProfile:
     localInsulin: Optional["LocalInsulin"] = None
     profileName: str = ""
     timezone: str = "UTC"
+    basal_schedule: list[tuple[str, float]] = field(default_factory=list)
 
     def getBasal(self, timestamp: int) -> float:
         """Get basal rate at timestamp (milliseconds since epoch)."""
-        hour = (timestamp % 86400000) // 3600000
-        return self.basal[hour]
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        local = datetime.fromtimestamp(timestamp / 1000, ZoneInfo(self.timezone))
+        if self.basal_schedule:
+            minute = local.hour * 60 + local.minute
+            value = self.basal_schedule[0][1]
+            for time, rate in sorted(self.basal_schedule):
+                hour, mins = map(int, time.split(":")[:2])
+                if hour * 60 + mins > minute:
+                    break
+                value = rate
+            return value
+        return self.basal[local.hour]
 
     def copy(self) -> "ATProfile":
         """Create a deep copy."""
@@ -150,6 +162,7 @@ class ATProfile:
             localInsulin=self.localInsulin,
             profileName=self.profileName,
             timezone=self.timezone,
+            basal_schedule=self.basal_schedule.copy(),
         )
 
 
@@ -180,6 +193,21 @@ class LocalInsulin:
         """Get duration in milliseconds."""
         return int(60 * 60 * 1000 * self.dia)
 
+    def validate_parameters(self):
+        """Reject unknown or singular curve parameters before doing insulin math."""
+        from math import exp, isclose
+        dia, peak = self._user_defined_dia, self.peak
+        if not isfinite(dia) or dia <= 0 or not isfinite(peak) or peak <= 0:
+            raise ValueError("Insulin DIA and peak must be known, finite and positive.")
+        duration = self.dia * 60
+        if peak >= duration / 2:
+            raise ValueError("Insulin peak must be less than half the action duration.")
+        tau = peak * (1 - peak / duration) / (1 - 2 * peak / duration)
+        a = 2 * tau / duration
+        denominator = 1 - a + (1 + a) * exp(-duration / tau)
+        if isclose(1 - a, 0, abs_tol=1e-12) or isclose(denominator, 0, abs_tol=1e-12):
+            raise ValueError("Insulin curve parameters produce a singular calculation.")
+
     def iobCalcForTreatment(self, bolus_amount: float, bolus_timestamp: int, current_time: int) -> "IOBComponents":
         """Calculate IOB for a treatment at given time.
 
@@ -195,6 +223,7 @@ class LocalInsulin:
         """
         from math import exp, pow
 
+        self.validate_parameters()
         result = IOBComponents()
         if bolus_amount != 0.0:
             t = (current_time - bolus_timestamp) / 1000.0 / 60.0  # minutes
