@@ -107,6 +107,10 @@ private fun TableRow(cells: List<String>, weights: List<Float>, header: Boolean 
 private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClear: () -> Unit) {
     val a: AutotuneAdvice = s.advice
     Text(stringResource(R.string.autotune_days_used, a.daysTuned, s.days), style = MaterialTheme.typography.bodySmall)
+    s.profileChangeMs?.let {
+        val whenText = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(it))
+        Text(stringResource(R.string.autotune_since_change, whenText), style = MaterialTheme.typography.bodySmall)
+    }
     if (s.result.skipped.isNotEmpty()) {
         Column {
             Text(stringResource(R.string.autotune_skipped), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
