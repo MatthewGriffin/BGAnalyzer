@@ -6,6 +6,8 @@ package app.bganalyzer.mongo
  */
 object ConnectionErrors {
     private val address = Regex("""mongodb(\+srv)?://\S+""")
+    /** A Nightscout access token travels in the query of a REST address. */
+    private val token = Regex("""([?&]token=)[^&\s]+""")
 
     fun describe(error: Throwable): String {
         val causes = generateSequence(error) { it.cause }.take(6).toList()
@@ -14,5 +16,5 @@ object ConnectionErrors {
         return redact(text)
     }
 
-    fun redact(text: String): String = address.replace(text, "mongodb://(address hidden)")
+    fun redact(text: String): String = token.replace(address.replace(text, "mongodb://(address hidden)"), "$1(hidden)")
 }

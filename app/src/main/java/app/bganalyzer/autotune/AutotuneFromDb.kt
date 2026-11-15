@@ -2,7 +2,6 @@ package app.bganalyzer.autotune
 
 import app.bganalyzer.data.AppDatabase
 import app.bganalyzer.domain.BasalTimeline
-import app.bganalyzer.domain.ExcludedDays
 import app.bganalyzer.domain.ProfileChanges
 import app.bganalyzer.domain.ProfileResolver
 import app.bganalyzer.domain.ProfileTimeline
@@ -38,8 +37,10 @@ object AutotuneFromDb {
         val change = ProfileChanges.lastRealChange(entries, now)
         val changeText = change?.let { java.time.format.DateTimeFormatter.ofPattern("d MMM HH:mm", java.util.Locale.ENGLISH).format(java.time.Instant.ofEpochMilli(it.startMs).atZone(zone)) }
         val excluded = db.excludedDayDao().all().map { it.date }.toSet()
-        val treatments = ExcludedDays.treatments(db.treatmentDao().validBetween(from - lookback, end), zone, excluded)
-        val readings = ExcludedDays.readings(db.glucoseReadingDao().between(from, end), zone, excluded).map { AtReading(it.timestampMs, it.mgdl) }
+        // Excluded days are left out as whole 4 AM to 4 AM days by the run itself. Filtering by calendar date here as well would
+        // cut the neighbouring day short and drop insulin that is still acting into the next day.
+        val treatments = db.treatmentDao().validBetween(from - lookback, end)
+        val readings = db.glucoseReadingDao().between(from, end).map { AtReading(it.timestampMs, it.mgdl) }
         // priming and zero-insulin records carry no insulin that acts
         val boluses = treatments.filter { (it.insulin ?: 0.0) > 0 && it.eventType?.contains("prim", ignoreCase = true) != true }.map { Dose(it.timestampMs, it.insulin!!) } +
             // extended boluses (not the ones AAPS emulates with a temp basal, which are already in the temp basals)
