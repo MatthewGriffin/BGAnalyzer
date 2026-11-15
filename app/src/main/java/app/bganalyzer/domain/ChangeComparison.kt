@@ -1,6 +1,10 @@
 package app.bganalyzer.domain
 
 import app.bganalyzer.data.GlucoseReadingEntity
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
 
 /** Glucose over one stretch of time. [days] is the stretch length, [readings] how many readings fell in it. */
 data class PeriodSummary(val days: Double, val readings: Int, val timeInRange: TimeInRange) {
@@ -27,13 +31,19 @@ object ChangeComparison {
     const val MIN_DAYS = 2.0
     internal const val DAY_MS = 86_400_000L
 
-    /** [readings] sorted by time and already stripped of excluded days. [changes] are all known switches, oldest first. */
-    fun compare(readings: List<GlucoseReadingEntity>, changes: List<EffectiveProfile>, periodFromMs: Long, nowMs: Long): List<ChangeResult> {
-        val sorted = changes.sortedBy { it.startMs }
+    /**
+     * [readings] sorted by time and already stripped of excluded days. [changes] are all known switches, oldest first.
+     * Only the last steady switch of each local day counts (several edits in one day are one change), and a day that ends
+     * on the same settings as the day before is not a change at all.
+     */
+    fun compare(readings: List<GlucoseReadingEntity>, changes: List<EffectiveProfile>, periodFromMs: Long, nowMs: Long, zone: ZoneId = ZoneOffset.UTC): List<ChangeResult> {
+        val perDay = changes.filter { !it.isTemporary }.sortedBy { it.startMs }
+            .groupBy { LocalDate.ofInstant(Instant.ofEpochMilli(it.startMs), zone) }.values.map { it.last() }.sortedBy { it.startMs }
+        val sorted = perDay.filterIndexed { i, c -> i == 0 || !ProfileChanges.sameSettings(perDay[i - 1], c) }
         return sorted.mapIndexedNotNull { i, c ->
-            if (c.startMs < periodFromMs || c.isTemporary) return@mapIndexedNotNull null
-            val prev = sorted.take(i).lastOrNull { !it.isTemporary }
-            val next = sorted.drop(i + 1).firstOrNull { !it.isTemporary }
+            if (c.startMs < periodFromMs) return@mapIndexedNotNull null
+            val prev = sorted.getOrNull(i - 1)
+            val next = sorted.getOrNull(i + 1)
             val beforeFrom = maxOf(c.startMs - WINDOW_DAYS * DAY_MS, prev?.startMs ?: Long.MIN_VALUE)
             val afterTo = minOf(c.startMs + WINDOW_DAYS * DAY_MS, next?.startMs ?: Long.MAX_VALUE, nowMs)
             ChangeResult(

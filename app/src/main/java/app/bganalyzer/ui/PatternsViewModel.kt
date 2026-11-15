@@ -92,7 +92,7 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                             basal = basalStats,
                             changes = ChangeComparison.compare(
                                 windowReadings,
-                                resolver.changes(0L, to), from, to,
+                                resolver.changes(0L, to), from, to, zone,
                             ).reversed(),
                             equipment = EquipmentChanges.compare(
                                 windowReadings,
