@@ -50,4 +50,12 @@ class MomentTest {
         assertEquals(0.5, Moment.at(t0 + 30 * min, emptyList(), emptyList(), segs).basal!!.rateUph, 0.0)
         assertNull(Moment.at(t0 + 61 * min, emptyList(), emptyList(), segs).basal)
     }
+
+    @Test
+    fun glucoseNearUsesTheNearestReadingWithinTheLimit() {
+        val rs = listOf(r(0, 100.0), r(5, 110.0))
+        assertEquals(110.0, Moment.glucoseNear(rs, t0 + 4 * min)!!, 0.0)
+        assertNull(Moment.glucoseNear(rs, t0 + 30 * min))
+        assertEquals(110.0, Moment.glucoseNear(rs, t0 + 30 * min, maxGapMs = 30 * min)!!, 0.0)
+    }
 }

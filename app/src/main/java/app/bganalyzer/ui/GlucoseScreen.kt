@@ -46,6 +46,7 @@ fun GlucoseScreen(
     hasConnection: Boolean,
     onDaysChange: (Int) -> Unit,
     onUnitChange: (GlucoseUnit) -> Unit,
+    onLayoutChange: (ChartLayout) -> Unit,
     onSync: () -> Unit,
 ) {
     val ranges = GlucoseRanges()
@@ -90,6 +91,15 @@ fun GlucoseScreen(
                     modifier = Modifier.weight(1f),
                 )
             }
+
+            Dropdown(
+                label = stringResource(R.string.layout_label),
+                options = ChartLayout.entries,
+                selected = state.layout,
+                text = { stringResource(if (it == ChartLayout.OVERLAID) R.string.layout_overlaid else R.string.layout_separate) },
+                onSelect = onLayoutChange,
+                modifier = Modifier.fillMaxWidth(0.5f),
+            )
 
             if (state.points.isEmpty()) {
                 Text(stringResource(R.string.chart_no_data))

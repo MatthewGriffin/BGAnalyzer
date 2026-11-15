@@ -97,4 +97,8 @@
     <string name="moment_now">Now, %1$s</string>
     <string name="moment_latest_reading">Latest reading %1$s %2$s, %3$s ago</string>
     <string name="moment_back_to_now">Back to now</string>
+    <string name="layout_label">Chart layout</string>
+    <string name="layout_overlaid">Overlaid</string>
+    <string name="layout_separate">Separate</string>
+    <string name="chart_legend_overlaid">One chart: glucose line, basal as the teal area along the bottom (its own scale, labelled at the top of the area; lighter where it is the profile schedule, which ignores profile percentage and time shift), carbs as orange circles and insulin boluses as blue triangles on the glucose line (smaller and lighter for automatic micro-boluses). Amounts are written next to them for periods up to 2 days.</string>
 </resources>
