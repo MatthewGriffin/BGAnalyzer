@@ -57,6 +57,7 @@ object BasalComparison {
      * [treatments] should reach back about 12 hours before [fromMs] so a temp basal already running at the start is included.
      * Time is measured minute by minute in the profile's local time, so DST days have their real length.
      */
+    /** Convenience for callers that only have uploaded profile documents (no switch records). */
     fun analyze(
         treatments: List<TreatmentEntity>,
         profiles: List<ProfileEntity>,
@@ -64,24 +65,32 @@ object BasalComparison {
         toMs: Long,
         zone: ZoneId,
         blockHours: Int,
+    ): BasalComparisonResult = analyze(treatments, ProfileResolver.fromUploaded(profiles), fromMs, toMs, zone, blockHours)
+
+    /**
+     * Compares each minute's temp basal with the basal of the profile that was in force then, including its percentage
+     * and time shift ([resolver]).
+     */
+    fun analyze(
+        treatments: List<TreatmentEntity>,
+        resolver: ProfileResolver,
+        fromMs: Long,
+        toMs: Long,
+        zone: ZoneId,
+        blockHours: Int,
     ): BasalComparisonResult {
         require(blockHours in TimeBlocks.ALLOWED_BLOCK_HOURS)
         val segments = BasalTimeline.tempSegments(treatments, fromMs, toMs)
-        val sortedProfiles = profiles.sortedBy { it.startMs }
-        val schedules = sortedProfiles.map { BasalTimeline.schedule(it) }
         val rules = zone.rules
         val cells = HashMap<Pair<Long, Int>, Cell>()
         var segIndex = 0
-        var profileIndex = -1
         var knownMinutes = 0L
         var coveredMinutes = 0L
 
         var t = (fromMs + MINUTE_MS - 1) / MINUTE_MS * MINUTE_MS
         while (t < toMs) {
-            while (profileIndex + 1 < sortedProfiles.size && sortedProfiles[profileIndex + 1].startMs <= t) profileIndex++
-            // Before the first uploaded profile there is nothing to compare against; use the first one.
-            val steps = schedules.getOrNull(maxOf(profileIndex, 0)).orEmpty()
-            if (steps.isNotEmpty()) {
+            val scheduled = resolver.basalAt(t, zone)
+            if (scheduled != null) {
                 knownMinutes++
                 while (segIndex < segments.size && segments[segIndex].endMs <= t) segIndex++
                 val seg = segments.getOrNull(segIndex)?.takeIf { it.startMs <= t }
@@ -90,7 +99,6 @@ object BasalComparison {
                     val local = t / 1000 + rules.getOffset(Instant.ofEpochMilli(t)).totalSeconds
                     val day = Math.floorDiv(local, 86_400L)
                     val sec = Math.floorMod(local, 86_400L).toInt()
-                    val scheduled = (steps.lastOrNull { it.secondsFromMidnight <= sec } ?: steps.last()).rateUph
                     val cell = cells.getOrPut(day to sec / 3600 / blockHours) { Cell() }
                     cell.covered++
                     cell.actualSum += seg.rateUph; cell.scheduledSum += scheduled
@@ -123,11 +131,7 @@ object BasalComparison {
         var above = 0; var below = 0; var at = 0; var count = 0
         for (tb in treatments) {
             if (tb.eventType != "Temp Basal" || !tb.valid || tb.rateUph == null || tb.timestampMs !in fromMs until toMs || (tb.durationMs ?: 0L) <= 0L) continue
-            val pi = sortedProfiles.indexOfLast { it.startMs <= tb.timestampMs }
-            val steps = schedules.getOrNull(maxOf(pi, 0)).orEmpty()
-            if (steps.isEmpty()) continue
-            val sec = (tb.timestampMs / 1000 + rules.getOffset(Instant.ofEpochMilli(tb.timestampMs)).totalSeconds).let { Math.floorMod(it, 86_400L).toInt() }
-            val scheduled = (steps.lastOrNull { it.secondsFromMidnight <= sec } ?: steps.last()).rateUph
+            val scheduled = resolver.basalAt(tb.timestampMs, zone) ?: continue
             count++
             when {
                 tb.rateUph > scheduled + AT_PROFILE_TOLERANCE -> above++

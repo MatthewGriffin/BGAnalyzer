@@ -7,6 +7,9 @@ import app.bganalyzer.data.AppDatabase
 import app.bganalyzer.domain.BasalComparison
 import app.bganalyzer.domain.BasalComparisonResult
 import app.bganalyzer.domain.BlockStats
+import app.bganalyzer.domain.EffectiveProfile
+import app.bganalyzer.domain.ProfileResolver
+import app.bganalyzer.domain.ProfileTimeline
 import app.bganalyzer.domain.GlucoseUnit
 import app.bganalyzer.domain.MealBlockStats
 import app.bganalyzer.domain.PostMeal
@@ -41,6 +44,8 @@ data class PatternsState(
     val basal: BasalComparisonResult? = null,
     /** Days Nightscout returned (almost) nothing for, although the app asked. */
     val emptyDays: List<EmptyRange> = emptyList(),
+    /** Profile switches in the period, oldest first. */
+    val profileChanges: List<EffectiveProfile> = emptyList(),
 )
 
 class PatternsViewModel(app: Application) : AndroidViewModel(app) {
@@ -58,6 +63,7 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                     val zone = db.profileDao().latest()?.timezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
                         ?: ZoneId.systemDefault()
                     val readings = db.glucoseReadingDao().between(from, to)
+                    val resolver = ProfileResolver(ProfileTimeline.entries(db.treatmentDao().profileEvents()), db.profileDao().all())
                     val treatments = db.treatmentDao().validBetween(from - 12 * 3_600_000L, to)
                     emit(
                         PatternsState(
@@ -65,7 +71,8 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                             TimeBlocks.analyze(readings, zone, b),
                             PostMeal.analyze(readings, PostMeal.meals(treatments).filter { it.timeMs >= from }, zone, b),
                             unsyncedMs = SyncPlanner.unsyncedMs(coverage.map { it.source to Span(it.startMs, it.endMs) }, Span(from, to)),
-                            basal = BasalComparison.analyze(treatments, db.profileDao().all(), from, to, zone, b),
+                            basal = BasalComparison.analyze(treatments, resolver, from, to, zone, b),
+                            profileChanges = resolver.changes(from, to),
                             emptyDays = run {
                                 val period = Span(from, to)
                                 fun covered(source: String) = coverage.filter { it.source == source }.map { Span(it.startMs, it.endMs) }

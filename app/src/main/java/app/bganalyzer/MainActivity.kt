@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -63,6 +64,8 @@ class MainActivity : ComponentActivity() {
                 val glucoseState by glucose.state.collectAsState()
                 val syncState by glucose.sync.collectAsState()
                 Scaffold(
+                    // The screens' own top bars handle the status bar; the bottom bar handles the navigation bar.
+                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     bottomBar = {
                         NavigationBar {
                             listOf(R.string.tab_glucose, R.string.tab_patterns, R.string.tab_connection, R.string.tab_backup).forEachIndexed { i, label ->

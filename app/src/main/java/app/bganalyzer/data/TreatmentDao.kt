@@ -27,4 +27,11 @@ interface TreatmentDao {
 
     @Query("SELECT * FROM treatments WHERE valid = 1 AND timestampMs >= :fromMs AND timestampMs < :toMs ORDER BY timestampMs")
     suspend fun validBetween(fromMs: Long, toMs: Long): List<TreatmentEntity>
+
+    /** Profile switches and the effective-profile notes AAPS writes with them, all history (a few per change). */
+    @Query("SELECT * FROM treatments WHERE valid = 1 AND (eventType = 'Profile Switch' OR (eventType = 'Note' AND rawJson LIKE '%profileJson%')) ORDER BY timestampMs")
+    fun observeProfileEvents(): Flow<List<TreatmentEntity>>
+
+    @Query("SELECT * FROM treatments WHERE valid = 1 AND (eventType = 'Profile Switch' OR (eventType = 'Note' AND rawJson LIKE '%profileJson%')) ORDER BY timestampMs")
+    suspend fun profileEvents(): List<TreatmentEntity>
 }
