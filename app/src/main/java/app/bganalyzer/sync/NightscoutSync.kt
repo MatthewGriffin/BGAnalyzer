@@ -28,9 +28,9 @@ data class SyncResult(
 class NightscoutSync(private val db: AppDatabase, private val nowMs: () -> Long = System::currentTimeMillis) {
     private companion object {
         const val BATCH = 1000
-        const val GLUCOSE = "glucose"
-        const val TREATMENTS = "treatments"
-        const val IOB = "iob"
+        const val GLUCOSE = Sources.GLUCOSE
+        const val TREATMENTS = Sources.TREATMENTS
+        const val IOB = Sources.IOB
         /** With nothing stored, take the newest profiles; they are few and small. */
         const val MAX_FIRST_PROFILES = 300
     }
@@ -39,6 +39,7 @@ class NightscoutSync(private val db: AppDatabase, private val nowMs: () -> Long 
     suspend fun run(uri: String, database: String, days: Int, onProgress: (Int) -> Unit = {}): SyncResult {
         val now = nowMs()
         val period = SyncPlanner.period(now, days)
+        Sources.LEGACY.forEach { db.coverageDao().clear(it) }
         seedGlucoseCoverage()
         return NightscoutMongo.open(uri).use { client ->
             val mongo = client.getDatabase(database)
@@ -90,7 +91,7 @@ class NightscoutSync(private val db: AppDatabase, private val nowMs: () -> Long 
         val edited: Bson? = dao.newestServerModified()?.let { Filters.gt("srvModified", it) }
         var fetched = 0
         for ((i, chunk) in SyncPlanner.chunks(spans).withIndex()) {
-            val ranges = chunk.map { Filters.and(Filters.gt("created_at", SyncPlanner.iso(it.startMs)), Filters.lte("created_at", SyncPlanner.iso(it.endMs))) }
+            val ranges = eventTimeRanges(chunk)
             val filter = if (i == 0 && edited != null) Filters.or(ranges + edited) else Filters.or(ranges)
             fetched += batched(mongo.getCollection("treatments").find(filter), TreatmentMapper::treatment, { dao.upsertAll(it) }, progress)
             markCovered(TREATMENTS, chunk)
@@ -105,7 +106,7 @@ class NightscoutSync(private val db: AppDatabase, private val nowMs: () -> Long 
         val spans = SyncPlanner.spans(period, covered, holes, SyncPlanner.IOB_TAIL_MS, now)
         var fetched = 0
         for (chunk in SyncPlanner.chunks(spans)) {
-            val ranges = chunk.map { Filters.and(Filters.gt("created_at", SyncPlanner.iso(it.startMs)), Filters.lte("created_at", SyncPlanner.iso(it.endMs))) }
+            val ranges = eventTimeRanges(chunk)
             // Only loop records carry IOB; uploader and pump status records are about half of the collection.
             val filter = Filters.and(Filters.exists("openaps.iob"), Filters.or(ranges))
             fetched += batched(
@@ -117,6 +118,18 @@ class NightscoutSync(private val db: AppDatabase, private val nowMs: () -> Long 
             markCovered(IOB, chunk)
         }
         return Part(fetched, spans.size)
+    }
+
+    /**
+     * A record belongs to a span if either its `created_at` text or its numeric `date` falls in it. Normally they are the
+     * same moment, but a record uploaded late can carry the upload time in one and the event time in the other, and asking
+     * only by `created_at` would miss it.
+     */
+    private fun eventTimeRanges(spans: List<Span>): List<Bson> = spans.flatMap {
+        listOf(
+            Filters.and(Filters.gt("created_at", SyncPlanner.iso(it.startMs)), Filters.lte("created_at", SyncPlanner.iso(it.endMs))),
+            Filters.and(Filters.gt("date", it.startMs), Filters.lte("date", it.endMs)),
+        )
     }
 
     /** Profiles are few and rarely change: with some stored, ask only for newer ones (a day of overlap). */

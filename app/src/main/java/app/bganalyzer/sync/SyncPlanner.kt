@@ -16,6 +16,18 @@ import java.time.format.DateTimeFormatter
  *   Holes older than 7 days are asked for once, then trusted as real (the sensor or phone was off).
  * Treatments cannot show holes in the data (they are sparse by nature), so they rely on coverage and the tail.
  */
+/**
+ * Names under which sync coverage is saved. The suffix is bumped when the way a source is requested changes, so
+ * stretches that were checked the old way are checked again once. (Version 2 of treatments and IOB also asks by
+ * the event's own `date`, not only by `created_at`, which differs on records uploaded late.)
+ */
+object Sources {
+    const val GLUCOSE = "glucose"
+    const val TREATMENTS = "treatments.v2"
+    const val IOB = "iob.v2"
+    val LEGACY = listOf("treatments", "iob")
+}
+
 object SyncPlanner {
     const val DAY_MS = 24L * 60 * 60 * 1000
     const val GLUCOSE_TAIL_MS = 60L * 60 * 1000
@@ -82,7 +94,7 @@ object SyncPlanner {
      */
     fun unsyncedMs(coverage: List<Pair<String, Span>>, period: Span): Long {
         val settled = Span(period.startMs, maxOf(period.startMs, period.endMs - DAY_MS))
-        return listOf("glucose", "treatments", "iob").maxOf { source ->
+        return listOf(Sources.GLUCOSE, Sources.TREATMENTS, Sources.IOB).maxOf { source ->
             Intervals.subtract(settled, coverage.filter { it.first == source }.map { it.second }).sumOf { it.lengthMs }
         }
     }

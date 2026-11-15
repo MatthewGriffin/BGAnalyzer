@@ -104,4 +104,9 @@
     <string name="moment_no_iob">No insulin-on-board data for this time</string>
     <string name="chart_legend_iob">Purple line: insulin on board as reported by the loop, on its own scale (shown on the overlaid layout; the moment card shows it for both).</string>
     <string name="patterns_sync_button">Sync the last %1$d days</string>
+    <string name="empty_days_title">Nightscout returned nothing for these days</string>
+    <string name="empty_days_line">%1$s: %2$s</string>
+    <string name="empty_days_treatments">Treatments (boluses, carbs, temp basals)</string>
+    <string name="empty_days_iob">Loop insulin on board</string>
+    <string name="empty_days_glucose">Glucose</string>
 </resources>

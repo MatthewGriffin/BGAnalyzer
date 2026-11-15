@@ -7,6 +7,9 @@ import app.bganalyzer.R
 import app.bganalyzer.data.AppDatabase
 import app.bganalyzer.data.GlucoseReadingEntity
 import app.bganalyzer.data.IobSampleEntity
+import app.bganalyzer.sync.DataChecks
+import app.bganalyzer.sync.EmptyRange
+import app.bganalyzer.sync.Sources
 import app.bganalyzer.sync.Span
 import app.bganalyzer.sync.SyncPlanner
 import app.bganalyzer.domain.BasalSegment
@@ -61,6 +64,8 @@ data class GlucoseUiState(
     val iob: List<IobSampleEntity> = emptyList(),
     /** How much of the period has never been asked for from Nightscout (not counting the recent tail). Zero when complete. */
     val unsyncedMs: Long = 0,
+    /** Days Nightscout returned (almost) nothing for, although the app asked. */
+    val emptyDays: List<EmptyRange> = emptyList(),
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -102,6 +107,13 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
                     basal = BasalTimeline.build(all, profiles, from, to, zone),
                     iob = iob,
                     unsyncedMs = SyncPlanner.unsyncedMs(coverage.map { it.source to Span(it.startMs, it.endMs) }, Span(from, to)),
+                    emptyDays = run {
+                        val period = Span(from, to)
+                        fun covered(source: String) = coverage.filter { it.source == source }.map { Span(it.startMs, it.endMs) }
+                        DataChecks.emptyRanges(Sources.GLUCOSE, rows.map { it.timestampMs }, covered(Sources.GLUCOSE), period, zone, 100, to) +
+                            DataChecks.emptyRanges(Sources.TREATMENTS, all.map { it.timestampMs }, covered(Sources.TREATMENTS), period, zone, 5, to) +
+                            DataChecks.emptyRanges(Sources.IOB, iob.map { it.timestampMs }, covered(Sources.IOB), period, zone, 5, to)
+                    },
                 )
             }
         }
