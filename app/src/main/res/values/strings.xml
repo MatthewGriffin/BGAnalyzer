@@ -150,4 +150,19 @@
     <string name="changes_before">Before</string>
     <string name="changes_after">After</string>
     <string name="changes_line">%1$s (%2$s days): %3$s%% in range, %4$s%% below, %5$s%% above</string>
+    <string name="autotune_title">Autotune (experimental)</string>
+    <string name="autotune_intro">A port of the AndroidAPS autotune: it replays recent days (4 AM to 4 AM) against your insulin and carb records and shows what basal, sensitivity and carb ratio would have fitted. Advice only, nothing is changed. It reads the data saved in the app, so sync first. Changes are limited to the AAPS autosens limits (up to +20% / down to -30% of your profile), and a basal increase is held back in any hour where glucose goes low.</string>
+    <string name="autotune_days_label">Days to replay</string>
+    <string name="autotune_run">Run autotune</string>
+    <string name="autotune_running">Replaying day %1$d of %2$d</string>
+    <string name="autotune_days_used">%1$d of %2$d days had enough data and were used.</string>
+    <string name="autotune_skipped">Skipped: %1$s</string>
+    <string name="autotune_isf_cr">Sensitivity and carb ratio</string>
+    <string name="autotune_isf">Sensitivity (ISF): %1$s -> %2$s %3$s per unit</string>
+    <string name="autotune_cr">Carb ratio: %1$s -> %2$s g per unit</string>
+    <string name="autotune_isf_cr_note">Autotune uses one value for the whole day, so these are daily averages of your profile.</string>
+    <string name="autotune_basal">Basal by hour (current -> suggested, confidence)</string>
+    <string name="autotune_basal_note">Low confidence means few days, or hours with little usable data that were filled in from their neighbours.</string>
+    <string name="autotune_held">Held at the current rate. Autotune wanted %1$s U/h, but %2$s.</string>
+    <string name="autotune_clear">Clear result</string>
 </resources>
