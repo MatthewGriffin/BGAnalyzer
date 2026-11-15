@@ -51,16 +51,12 @@ fun GlucoseScreen(
 ) {
     val ranges = GlucoseRanges()
     val unit = state.unit
-    Scaffold(contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0), topBar = { TopAppBar(title = { Text(stringResource(R.string.glucose_title)) }) }) { padding ->
-        Column(
-            Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+    ScreenScaffold(stringResource(R.string.glucose_title)) {
             if (!hasConnection) Text(stringResource(R.string.sync_need_connection))
             Button(onClick = onSync, enabled = hasConnection && sync !is SyncState.Running) {
                 Text(stringResource(R.string.sync_button))
             }
-            if (state.unsyncedMs > 60 * 60 * 1000L && sync !is SyncState.Running) {
+            if (hasConnection && state.unsyncedMs > 60 * 60 * 1000L && sync !is SyncState.Running) {
                 Text(stringResource(R.string.sync_unsynced_notice), color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodyMedium)
             }
             EmptyDaysNotice(state.emptyDays)
@@ -69,7 +65,7 @@ fun GlucoseScreen(
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                     Text(stringResource(R.string.sync_running, sync.stored))
                 }
-                is SyncState.Done -> Text(stringResource(R.string.sync_done, sync.glucose, sync.treatments, sync.iob, sync.spans))
+                is SyncState.Done -> Text(stringResource(R.string.sync_done, sync.glucose, sync.treatments, sync.iob, sync.spans), style = MaterialTheme.typography.bodySmall)
                 is SyncState.Failed -> {
                     Text(stringResource(R.string.sync_failed), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall)
                     Text(sync.message)
@@ -125,7 +121,6 @@ fun GlucoseScreen(
             }
             TreatmentsSection(state)
         }
-    }
 }
 
 @Composable

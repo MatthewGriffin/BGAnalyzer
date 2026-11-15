@@ -307,7 +307,8 @@ fun GlucoseChart(
         // Profile changes, like the notes AAPS puts on its chart: a dashed line, and the name and modifier when there is room.
         val dash = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))
         val notes = toMs - fromMs <= 7L * 24 * 60 * 60 * 1000
-        var noteRow = 0
+        // where the last note on each of the two rows ends, so close-together switches do not print over each other
+        val rowEnds = floatArrayOf(-1f, -1f)
         for (pc in profileChanges) {
             if (pc.startMs !in fromMs..toMs) continue
             val px = x(pc.startMs)
@@ -318,8 +319,11 @@ fun GlucoseChart(
             if (notes) {
                 val m = measurer.measure(pc.label(), TextStyle(fontSize = 10.sp, color = PROFILE_COLOR))
                 val tx = (px + 3.dp.toPx()).coerceAtMost(size.width - m.size.width)
-                drawText(m, topLeft = Offset(tx, 2.dp.toPx() + (noteRow % 2) * m.size.height))
-                noteRow++
+                val row = rowEnds.indexOfFirst { it + 3.dp.toPx() <= tx }
+                if (row >= 0) {
+                    drawText(m, topLeft = Offset(tx, 2.dp.toPx() + row * m.size.height))
+                    rowEnds[row] = tx + m.size.width
+                }
             }
         }
         drawCursor(selectedMs, ::x, cursor, 0f, h, fromMs, toMs)

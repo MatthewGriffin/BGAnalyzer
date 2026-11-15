@@ -59,11 +59,7 @@ fun ConnectionScreen(
     onTest: () -> Unit,
     rest: RestUi = RestUi(),
 ) {
-    Scaffold(contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0), topBar = { TopAppBar(title = { Text(stringResource(R.string.connection_title)) }) }) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+    ScreenScaffold(stringResource(R.string.connection_title)) {
             Text(stringResource(R.string.connection_intro))
             Dropdown(
                 label = stringResource(R.string.source_label),
@@ -105,6 +101,7 @@ fun ConnectionScreen(
                     Text(stringResource(if (testState == TestState.Running) R.string.connection_testing else R.string.connection_test_button))
                 }
             } else {
+            Text(stringResource(R.string.connection_mongo_intro), style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(
                 value = uri,
                 onValueChange = onUriChange,
@@ -159,7 +156,6 @@ fun ConnectionScreen(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-    }
 }
 
 @Preview

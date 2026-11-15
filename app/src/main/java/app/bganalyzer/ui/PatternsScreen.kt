@@ -47,11 +47,7 @@ fun PatternsScreen(
     onRestoreDay: (String) -> Unit = {},
     onExcludeDays: (List<String>, String) -> Unit = { _, _ -> },
 ) {
-    Scaffold(contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0), topBar = { TopAppBar(title = { Text(stringResource(R.string.patterns_title)) }) }) { padding ->
-        Column(
-            Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+    ScreenScaffold(stringResource(R.string.patterns_title)) {
             Text(stringResource(R.string.patterns_intro))
             if (state.unsyncedMs > 60 * 60 * 1000L && sync !is SyncState.Running) {
                 Text(stringResource(R.string.sync_unsynced_notice), color = MaterialTheme.colorScheme.tertiary)
@@ -83,23 +79,24 @@ fun PatternsScreen(
                     modifier = Modifier.weight(1f),
                 )
             }
-            EmptyDaysNotice(state.emptyDays)
-            ExcludedDaysSection(state, onExcludeDay, onRestoreDay)
             if (state.noInsulinDays.isNotEmpty()) {
+                val noInsulinNote = stringResource(R.string.no_insulin_note)
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(R.string.no_insulin_title, state.noInsulinDays.size), style = MaterialTheme.typography.titleSmall)
                         Text(stringResource(R.string.no_insulin_intro), style = MaterialTheme.typography.bodySmall)
                         Text(state.noInsulinDays.joinToString(", "), style = MaterialTheme.typography.bodySmall)
-                        androidx.compose.material3.Button(onClick = { onExcludeDays(state.noInsulinDays, "No insulin records (pump off?)") }) {
+                        androidx.compose.material3.Button(onClick = { onExcludeDays(state.noInsulinDays, noInsulinNote) }) {
                             Text(stringResource(R.string.no_insulin_button))
                         }
                     }
                 }
             }
             if (state.loaded && state.readingCount == 0) {
+                EmptyDaysNotice(state.emptyDays)
+                ExcludedDaysSection(state, onExcludeDay, onRestoreDay)
                 Text(stringResource(R.string.patterns_no_data))
-                return@Column
+                return@ScreenScaffold
             }
             if (state.zoneName.isNotEmpty()) Text(stringResource(R.string.patterns_timezone, state.zoneName), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(R.string.patterns_glucose_title), style = MaterialTheme.typography.titleMedium)
@@ -110,8 +107,10 @@ fun PatternsScreen(
             Text(stringResource(R.string.patterns_meals_title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(R.string.patterns_meals_intro), style = MaterialTheme.typography.bodySmall)
             state.meals.forEach { MealCard(it, unit) }
+            // data quality last: the trends above are what this tab is for
+            EmptyDaysNotice(state.emptyDays)
+            ExcludedDaysSection(state, onExcludeDay, onRestoreDay)
         }
-    }
 }
 
 private fun hour(h: Int) = String.format(Locale.US, "%02d:00", h % 24)
@@ -250,6 +249,7 @@ private fun ExcludedDaysSection(state: PatternsState, onExclude: (String, String
     val candidates = (0 until state.days).map { java.time.LocalDate.now().minusDays(it.toLong()).toString() }.filter { it !in already }
     var picked by androidx.compose.runtime.remember(candidates.firstOrNull()) { androidx.compose.runtime.mutableStateOf(candidates.firstOrNull()) }
     var note by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    val defaultNote = stringResource(R.string.excluded_default_note)
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.excluded_title), style = MaterialTheme.typography.titleSmall)
@@ -267,7 +267,7 @@ private fun ExcludedDaysSection(state: PatternsState, onExclude: (String, String
                     value = note, onValueChange = { note = it.take(80) }, singleLine = true,
                     label = { Text(stringResource(R.string.excluded_note_label)) }, modifier = Modifier.fillMaxWidth(),
                 )
-                androidx.compose.material3.Button(onClick = { onExclude(picked ?: candidates.first(), note.ifBlank { "Pump failure" }); note = "" }) {
+                androidx.compose.material3.Button(onClick = { onExclude(picked ?: candidates.first(), note.ifBlank { defaultNote }); note = "" }) {
                     Text(stringResource(R.string.excluded_button))
                 }
             }

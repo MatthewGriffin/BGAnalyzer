@@ -23,12 +23,14 @@ object AutotuneFromDb {
         val from = end - days * DAY_MS
         val lookback = 16L * HOUR_MS
         val resolver = ProfileResolver(ProfileTimeline.entries(db.treatmentDao().profileEvents()), db.profileDao().all())
-        val settings = resolver.settingsAt(end)
+        // start from the profile in force now (what would be edited), not the one at the end of the replayed days
+        val settings = resolver.settingsAt(now)
         val isf = settings.averageIsfMgdl() ?: return Outcome.Failed("The profile has no insulin sensitivity (ISF).")
         val ic = settings.averageCarbRatio() ?: return Outcome.Failed("The profile has no carb ratio.")
+        val inForce = resolver.at(now) ?: return Outcome.Failed("The profile has no basal rates.")
+        val today = java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(now), zone).atStartOfDay(zone)
         val basal = (0..23).map { h ->
-            val t = java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(end), zone).minusDays(1).atStartOfDay(zone).plusHours(h.toLong()).toInstant().toEpochMilli()
-            resolver.basalAt(t, zone) ?: return Outcome.Failed("The profile has no basal rates.")
+            ProfileTimeline.rateAt(inForce.basal, today.plusHours(h.toLong()).toInstant().toEpochMilli(), zone) ?: return Outcome.Failed("The profile has no basal rates.")
         }
         val excluded = db.excludedDayDao().all().map { it.date }.toSet()
         val treatments = ExcludedDays.treatments(db.treatmentDao().validBetween(from - lookback, end), zone, excluded)
@@ -46,7 +48,7 @@ object AutotuneFromDb {
         val data = AutotuneData(readings, boluses, meals) { f, t -> BasalTimeline.build(treatments, resolver, f, t, zone) }
         val result = AutotuneRun.run(data, baseline, AutotuneLimits(), zone, end, days, skipDate = { it in excluded }, progress = progress)
         if (result.daysTuned == 0) {
-            return Outcome.Failed("No day had enough data. Skipped: " + result.skipped.joinToString { "${it.date} (${it.reason})" })
+            return Outcome.Failed("No day had enough data. Skipped: " + SkippedSummary.text(result.skipped))
         }
         // the low-glucose guard looks only at the days that were used, not at skipped (no insulin, excluded) days
         val skippedDates = result.skipped.map { it.date }.toSet()
