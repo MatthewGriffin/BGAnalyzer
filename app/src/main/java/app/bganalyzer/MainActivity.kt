@@ -85,6 +85,7 @@ class MainActivity : ComponentActivity() {
                             hasConnection = glucose.hasConnection,
                             onDaysChange = glucose::setDays,
                             onUnitChange = glucose::setUnit,
+                            onLayoutChange = glucose::setLayout,
                             onSync = glucose::sync,
                         )
                     }

@@ -73,8 +73,9 @@ fun GlucoseCharts(state: GlucoseUiState, ranges: GlucoseRanges = GlucoseRanges()
                 )
             },
         ) {
-            GlucoseChart(state.points, state.fromMs, state.toMs, state.unit, state.treatments.filter { (it.carbs ?: 0.0) > 0 }.map { it.timestampMs }, selected, ranges)
-            InsulinPanel(state, selected)
+            val overlaid = state.layout == ChartLayout.OVERLAID
+            GlucoseChart(state.points, state.fromMs, state.toMs, state.unit, state.treatments, state.basal, overlaid, selected, ranges)
+            if (!overlaid) InsulinPanel(state, selected)
         }
         // With nothing touched the card describes right now (the end of the chart).
         val moment = Moment.at(selected ?: (state.toMs - 1), state.points, state.treatments, state.basal)
@@ -83,7 +84,10 @@ fun GlucoseCharts(state: GlucoseUiState, ranges: GlucoseRanges = GlucoseRanges()
             onBackToNow = { selected = null },
         )
         if (selected == null) Text(stringResource(R.string.chart_touch_hint), style = MaterialTheme.typography.bodySmall)
-        Text(stringResource(R.string.chart_legend), style = MaterialTheme.typography.bodySmall)
+        Text(
+            stringResource(if (state.layout == ChartLayout.OVERLAID) R.string.chart_legend_overlaid else R.string.chart_legend),
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
@@ -142,7 +146,10 @@ fun GlucoseChart(
     fromMs: Long,
     toMs: Long,
     unit: GlucoseUnit,
-    carbTimes: List<Long>,
+    treatments: List<app.bganalyzer.data.TreatmentEntity>,
+    basal: List<BasalSegment>,
+    /** True: basal and markers are drawn on the glucose chart itself, like AAPS. False: only carb dots; insulin has its own panel. */
+    overlay: Boolean,
     selectedMs: Long?,
     ranges: GlucoseRanges = GlucoseRanges(),
     modifier: Modifier = Modifier,
@@ -150,15 +157,18 @@ fun GlucoseChart(
     val measurer = rememberTextMeasurer()
     val labelStyle = TextStyle(fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val line = MaterialTheme.colorScheme.primary
+    val basalLabel = TextStyle(fontSize = 11.sp, color = BASAL_COLOR)
+    val markerLabel = TextStyle(fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurface)
     val band = Color(0xFF2E9E5B).copy(alpha = 0.15f)
     val grid = MaterialTheme.colorScheme.outlineVariant
     val danger = MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
     val cursor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     val dateFormat = DateFormat.getDateInstance(DateFormat.SHORT)
-    val timeFormat = DateFormat.getTimeInstance(DateFormat.SHORT)
+    // A 24-hour window starts and ends at the same clock time, so include the date.
+    val timeFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
     val oneDay = toMs - fromMs <= 24 * 60 * 60 * 1000L + 1
 
-    Canvas(modifier.fillMaxWidth().height(220.dp)) {
+    Canvas(modifier.fillMaxWidth().height(if (overlay) 300.dp else 220.dp)) {
         val left = AXIS_WIDTH.toPx()
         val bottom = 20.dp.toPx()
         val w = size.width - left
@@ -169,6 +179,18 @@ fun GlucoseChart(
         fun y(v: Double) = h * (1f - ((v - yMin) / (yMax - yMin)).toFloat())
 
         drawRect(band, Offset(left, y(ranges.highAbove)), Size(w, y(ranges.lowBelow) - y(ranges.highAbove)))
+        if (overlay) {
+            // Basal as a translucent step area along the bottom, on its own scale (labelled at the top of the area).
+            val basalMax = (basal.maxOfOrNull { it.rateUph } ?: 0.0).coerceAtLeast(0.5).let { Math.ceil(it * 2) / 2 }
+            val zone = h * 0.28f
+            for (s in basal) {
+                val top = h - zone * (s.rateUph / basalMax).toFloat().coerceIn(0f, 1f)
+                drawRect(BASAL_COLOR.copy(alpha = if (s.scheduled) 0.15f else 0.32f), Offset(x(s.startMs), top), Size((x(s.endMs) - x(s.startMs)).coerceAtLeast(0.5f), h - top))
+                drawLine(BASAL_COLOR.copy(alpha = if (s.scheduled) 0.5f else 0.9f), Offset(x(s.startMs), top), Offset(x(s.endMs), top), 1.2.dp.toPx())
+            }
+            val m = measurer.measure(String.format(Locale.getDefault(), "%.1f U/h", basalMax), basalLabel)
+            drawText(m, topLeft = Offset(left - m.size.width - 4.dp.toPx(), h - zone - m.size.height / 2f))
+        }
         listOf(ranges.veryLowBelow, ranges.veryHighAbove).forEach {
             if (it in yMin..yMax) drawLine(danger, Offset(left, y(it)), Offset(left + w, y(it)), 1.dp.toPx())
         }
@@ -184,9 +206,13 @@ fun GlucoseChart(
             drawText(m, topLeft = Offset(left + (w - m.size.width) * anchor, xLabelY))
         }
 
-        // Carbs as dots along the bottom edge, for periods up to 14 days where they stay readable.
-        if (toMs - fromMs <= 14L * 24 * 60 * 60 * 1000) {
-            for (t in carbTimes) if (t in fromMs..toMs) drawCircle(CARB_COLOR, 3.dp.toPx(), Offset(x(t), h - 4.dp.toPx()))
+        if (!overlay) {
+            // Carbs as dots along the bottom edge, for periods up to 14 days where they stay readable.
+            if (toMs - fromMs <= 14L * 24 * 60 * 60 * 1000) {
+                for (t in treatments) if ((t.carbs ?: 0.0) > 0 && t.timestampMs in fromMs..toMs) {
+                    drawCircle(CARB_COLOR, 3.dp.toPx(), Offset(x(t.timestampMs), h - 4.dp.toPx()))
+                }
+            }
         }
 
         val path = Path()
@@ -206,6 +232,38 @@ fun GlucoseChart(
         }
         drawPath(path, line, style = Stroke(width = 1.5.dp.toPx()))
         dots.forEach { drawCircle(line, 1.5.dp.toPx(), it) }
+        if (overlay) {
+            // Carbs (orange circle) and boluses (blue triangle) sit on the glucose line at the time they happened.
+            // Amounts are written next to them only when the period is short enough to stay readable.
+            val labels = toMs - fromMs <= 2L * 24 * 60 * 60 * 1000
+            for (t in treatments) {
+                if (t.timestampMs !in fromMs..toMs) continue
+                val px = x(t.timestampMs)
+                val gy = Moment.glucoseNear(points, t.timestampMs)?.let { y(it.coerceIn(yMin, yMax)) } ?: (h * 0.5f)
+                val carbs = t.carbs ?: 0.0
+                val insulin = t.insulin ?: 0.0
+                if (carbs > 0) {
+                    val c = Offset(px, (gy - 12.dp.toPx()).coerceAtLeast(6.dp.toPx()))
+                    drawCircle(CARB_COLOR, 4.dp.toPx(), c)
+                    if (labels) {
+                        val m = measurer.measure(String.format(Locale.getDefault(), "%.0fg", carbs), TextStyle(fontSize = 10.sp, color = CARB_COLOR))
+                        drawText(m, topLeft = Offset((c.x - m.size.width / 2f).coerceIn(left, size.width - m.size.width), c.y - 6.dp.toPx() - m.size.height))
+                    }
+                }
+                if (insulin > 0) {
+                    val tri = if (t.isSmb) 3.dp.toPx() else 5.5.dp.toPx()
+                    val cy = (gy + 12.dp.toPx()).coerceAtMost(h - 6.dp.toPx())
+                    val shape = Path().apply {
+                        moveTo(px, cy - tri); lineTo(px - tri, cy + tri * 0.7f); lineTo(px + tri, cy + tri * 0.7f); close()
+                    }
+                    drawPath(shape, if (t.isSmb) SMB_COLOR else BOLUS_COLOR)
+                    if (labels && !t.isSmb) {
+                        val m = measurer.measure(String.format(Locale.getDefault(), "%.1fU", insulin), TextStyle(fontSize = 10.sp, color = BOLUS_COLOR))
+                        drawText(m, topLeft = Offset((px - m.size.width / 2f).coerceIn(left, size.width - m.size.width), (cy + tri).coerceAtMost(h - m.size.height)))
+                    }
+                }
+            }
+        }
         drawCursor(selectedMs, ::x, cursor, 0f, h, fromMs, toMs)
     }
 }

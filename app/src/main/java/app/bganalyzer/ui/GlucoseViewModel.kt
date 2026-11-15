@@ -28,6 +28,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** How insulin is shown with glucose: on the same chart (like AAPS), or in its own panel underneath. */
+enum class ChartLayout { OVERLAID, SEPARATE }
+
 sealed interface SyncState {
     data object Idle : SyncState
     data class Running(val stored: Int) : SyncState
@@ -50,6 +53,7 @@ data class GlucoseUiState(
     val bolusInsulinTotal: Double = 0.0,
     /** Basal over the period: temp basals, with the profile schedule where none was running. */
     val basal: List<BasalSegment> = emptyList(),
+    val layout: ChartLayout = ChartLayout.OVERLAID,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -59,6 +63,10 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
     private val store = ConnectionStore(app)
     private val days = MutableStateFlow(7)
     private val unit = MutableStateFlow(GlucoseUnit.MMOL)
+    private val viewPrefs = app.getSharedPreferences("view_settings", android.content.Context.MODE_PRIVATE)
+    private val layout = MutableStateFlow(
+        runCatching { ChartLayout.valueOf(viewPrefs.getString("chart_layout", null) ?: "") }.getOrDefault(ChartLayout.OVERLAID),
+    )
     /** Bumped to recompute the time window, which moves with the clock. */
     private val refresh = MutableStateFlow(0)
 
@@ -85,6 +93,7 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
         }
+        .combine(layout) { state, l -> state.copy(layout = l) }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GlucoseUiState())
 
@@ -95,6 +104,12 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
     /** Moves the window to the current time, e.g. when the screen is opened again. */
     fun refreshWindow() = refresh.update { it + 1 }
     fun setUnit(value: GlucoseUnit) = unit.update { value }
+
+    /** Remembered between launches. */
+    fun setLayout(value: ChartLayout) {
+        layout.value = value
+        viewPrefs.edit().putString("chart_layout", value.name).apply()
+    }
 
     fun sync() {
         if (_sync.value is SyncState.Running) return

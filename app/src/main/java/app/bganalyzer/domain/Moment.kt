@@ -46,6 +46,10 @@ object Moment {
         )
     }
 
+    /** The glucose (mg/dL) at [t]: the nearest reading within [maxGapMs], or null. [readings] must be sorted by time. */
+    fun glucoseNear(readings: List<GlucoseReadingEntity>, t: Long, maxGapMs: Long = 15 * 60_000L): Double? =
+        nearest(readings, t)?.takeIf { kotlin.math.abs(it.timestampMs - t) <= maxGapMs }?.mgdl
+
     private fun nearest(readings: List<GlucoseReadingEntity>, t: Long): GlucoseReadingEntity? {
         if (readings.isEmpty()) return null
         var lo = 0; var hi = readings.size
