@@ -58,7 +58,7 @@ fun AutotuneScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(stringResource(R.string.autotune_intro), style = MaterialTheme.typography.bodySmall)
-            if (sync is SyncState.Running) Text(stringResource(R.string.suggestions_syncing), color = MaterialTheme.colorScheme.tertiary)
+            if (sync is SyncState.Running) Text(stringResource(R.string.autotune_syncing), color = MaterialTheme.colorScheme.tertiary)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Dropdown(
                     label = stringResource(R.string.autotune_days_label),
