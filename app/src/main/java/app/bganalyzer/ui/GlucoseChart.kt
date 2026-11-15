@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -75,18 +76,25 @@ fun GlucoseCharts(state: GlucoseUiState, ranges: GlucoseRanges = GlucoseRanges()
             GlucoseChart(state.points, state.fromMs, state.toMs, state.unit, state.treatments.filter { (it.carbs ?: 0.0) > 0 }.map { it.timestampMs }, selected, ranges)
             InsulinPanel(state, selected)
         }
-        val moment = selected?.let { Moment.at(it, state.points, state.treatments, state.basal) }
-        if (moment == null) {
-            Text(stringResource(R.string.chart_touch_hint), style = MaterialTheme.typography.bodySmall)
-        } else {
-            MomentCard(moment, state.unit)
-        }
+        // With nothing touched the card describes right now (the end of the chart).
+        val moment = Moment.at(selected ?: (state.toMs - 1), state.points, state.treatments, state.basal)
+        MomentCard(
+            moment, state.unit, isNow = selected == null, latest = state.points.lastOrNull(),
+            onBackToNow = { selected = null },
+        )
+        if (selected == null) Text(stringResource(R.string.chart_touch_hint), style = MaterialTheme.typography.bodySmall)
         Text(stringResource(R.string.chart_legend), style = MaterialTheme.typography.bodySmall)
     }
 }
 
 @Composable
-private fun MomentCard(m: app.bganalyzer.domain.MomentSummary, unit: GlucoseUnit) {
+private fun MomentCard(
+    m: app.bganalyzer.domain.MomentSummary,
+    unit: GlucoseUnit,
+    isNow: Boolean,
+    latest: GlucoseReadingEntity?,
+    onBackToNow: () -> Unit,
+) {
     val fmt = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
     fun ago(ms: Long): String {
         val min = ms / 60_000
@@ -95,10 +103,20 @@ private fun MomentCard(m: app.bganalyzer.domain.MomentSummary, unit: GlucoseUnit
     fun one(v: Double) = String.format(Locale.getDefault(), "%.1f", v)
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(fmt.format(Date(m.timeMs)), style = MaterialTheme.typography.titleSmall)
             Text(
-                m.mgdl?.let { stringResource(R.string.moment_glucose, unit.format(it), unit.label) }
-                    ?: stringResource(R.string.moment_no_reading),
+                if (isNow) stringResource(R.string.moment_now, fmt.format(Date(m.timeMs))) else fmt.format(Date(m.timeMs)),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            val glucose = m.mgdl
+            Text(
+                when {
+                    glucose != null -> stringResource(R.string.moment_glucose, unit.format(glucose), unit.label)
+                    // Right now but the newest reading is old (not synced lately): say so rather than show nothing.
+                    isNow && latest != null -> stringResource(
+                        R.string.moment_latest_reading, unit.format(latest.mgdl), unit.label, ago(m.timeMs - latest.timestampMs),
+                    )
+                    else -> stringResource(R.string.moment_no_reading)
+                },
             )
             val basal = m.basal
             Text(
@@ -113,6 +131,7 @@ private fun MomentCard(m: app.bganalyzer.domain.MomentSummary, unit: GlucoseUnit
             m.lastBolus?.let {
                 Text(stringResource(if (it.second) R.string.moment_last_smb else R.string.moment_last_bolus, String.format(Locale.getDefault(), "%.2f", it.first), ago(it.third)))
             }
+            if (!isNow) TextButton(onClick = onBackToNow) { Text(stringResource(R.string.moment_back_to_now)) }
         }
     }
 }
