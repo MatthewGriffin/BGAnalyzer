@@ -124,9 +124,9 @@ class SyncPlannerTest {
         val period = SyncPlanner.period(now, 7)
         val everything = listOf(Span(period.startMs - day, now))
         fun cov(vararg p: Pair<String, List<Span>>) = p.flatMap { (src, spans) -> spans.map { src to it } }
-        assertEquals(0L, SyncPlanner.unsyncedMs(cov("glucose" to everything, "treatments" to everything, "iob" to everything), period))
+        assertEquals(0L, SyncPlanner.unsyncedMs(cov(Sources.GLUCOSE to everything, Sources.TREATMENTS to everything, Sources.IOB to everything), period))
         // Treatments were only fetched for the last 2 days; the settled part of the period is days 7 to 1 ago, so days 7 to 2 ago (5 days) are missing.
-        val partial = cov("glucose" to everything, "treatments" to listOf(Span(now - 2 * day, now)), "iob" to everything)
+        val partial = cov(Sources.GLUCOSE to everything, Sources.TREATMENTS to listOf(Span(now - 2 * day, now)), Sources.IOB to everything)
         assertEquals(5 * day, SyncPlanner.unsyncedMs(partial, period))
         // Nothing ever synced: 6 settled days.
         assertEquals(6 * day, SyncPlanner.unsyncedMs(emptyList(), period))

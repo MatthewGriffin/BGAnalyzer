@@ -265,7 +265,7 @@ fun GlucoseChart(
             }
             drawPath(iobPath, IOB_COLOR, style = Stroke(width = 1.5.dp.toPx()))
             val m = measurer.measure(String.format(Locale.getDefault(), "%.0f U IOB", iobMax), TextStyle(fontSize = 11.sp, color = IOB_COLOR))
-            drawText(m, topLeft = Offset(left - m.size.width - 4.dp.toPx(), h - zone - m.size.height / 2f))
+            drawText(m, topLeft = Offset(left + w - m.size.width - 4.dp.toPx(), h - zone - m.size.height))
         }
         if (overlay) {
             // Carbs (orange circle) and boluses (blue triangle) sit on the glucose line at the time they happened.
