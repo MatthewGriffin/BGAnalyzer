@@ -314,24 +314,28 @@ private fun ProfileHistorySection(history: List<app.bganalyzer.domain.ProfileCon
     }
 }
 
+/** The profile as one ruled table, like the Autotune tables: from-time, basal, ISF and carb ratio, then the totals. */
 @Composable
 private fun ProfileSettingsTable(p: app.bganalyzer.domain.EffectiveProfile, unit: GlucoseUnit) {
     fun time(sec: Int) = String.format(Locale.US, "%02d:%02d", sec / 3600 % 24, sec / 60 % 60)
-    Text(stringResource(R.string.history_basal), style = MaterialTheme.typography.labelLarge)
-    p.basal.sortedBy { it.secondsFromMidnight }.forEach { Text(time(it.secondsFromMidnight) + "   " + rate(it.rateUph) + " U/h") }
-    Text(stringResource(R.string.history_basal_total, rate(app.bganalyzer.domain.ChangeComparison.totalBasal(p.basal))), style = MaterialTheme.typography.bodySmall)
     val st = p.settings
-    if (st.isf.isEmpty() && st.carbRatio.isEmpty()) {
-        Text(stringResource(R.string.history_no_settings), style = MaterialTheme.typography.bodySmall)
-        return
+    // every time any schedule changes, with the value of each schedule in force from there
+    val starts = (p.basal.map { it.secondsFromMidnight } + st.isf.map { it.secondsFromMidnight } + st.carbRatio.map { it.secondsFromMidnight } + 0).distinct().sorted()
+    fun at(steps: List<app.bganalyzer.domain.BasalStep>, sec: Int) = (steps.sortedBy { it.secondsFromMidnight }.lastOrNull { it.secondsFromMidnight <= sec } ?: steps.minByOrNull { it.secondsFromMidnight })?.rateUph
+    val w = listOf(1f, 1f, 1f, 1f)
+    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    TableRow(listOf(stringResource(R.string.autotune_col_time), stringResource(R.string.history_col_basal), stringResource(R.string.history_col_isf, unit.label), stringResource(R.string.history_col_cr)), w, header = true)
+    starts.forEach { sec ->
+        TableRow(
+            listOf(
+                time(sec), at(p.basal, sec)?.let { rate(it) } ?: "-",
+                at(st.isf, sec)?.let { unit.format(it) } ?: "-",
+                at(st.carbRatio, sec)?.let { String.format(Locale.getDefault(), "%.2f", it) } ?: "-",
+            ),
+            w, boldColumn = -1,
+        )
     }
-    if (st.isf.isNotEmpty()) {
-        Text(stringResource(R.string.history_isf, unit.label), style = MaterialTheme.typography.labelLarge)
-        st.isf.forEach { Text(time(it.secondsFromMidnight) + "   " + unit.format(it.rateUph)) }
-    }
-    if (st.carbRatio.isNotEmpty()) {
-        Text(stringResource(R.string.history_cr), style = MaterialTheme.typography.labelLarge)
-        st.carbRatio.forEach { Text(time(it.secondsFromMidnight) + "   " + String.format(Locale.getDefault(), "%.2f", it.rateUph)) }
-    }
-    st.diaHours?.let { Text(stringResource(R.string.history_dia, String.format(Locale.getDefault(), "%.1f", it)), style = MaterialTheme.typography.labelLarge) }
+    TableRow(listOf(stringResource(R.string.autotune_total), rate(app.bganalyzer.domain.ChangeComparison.totalBasal(p.basal)), "", ""), w, header = true)
+    st.diaHours?.let { Text(stringResource(R.string.history_dia, String.format(Locale.getDefault(), "%.1f", it)), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp)) }
+    if (st.isf.isEmpty() && st.carbRatio.isEmpty()) Text(stringResource(R.string.history_no_settings), style = MaterialTheme.typography.bodySmall)
 }
