@@ -140,10 +140,10 @@
     <string name="history_no_glucose">Not enough glucose recorded while it was in force.</string>
     <string name="history_show">Show settings</string>
     <string name="history_hide">Hide settings</string>
-    <string name="history_basal">Basal (U/h from)</string>
+    <string name="history_col_basal">Basal U/h</string>
+    <string name="history_col_isf">ISF %1$s</string>
+    <string name="history_col_cr">Carb ratio</string>
     <string name="history_basal_total">Total basal %1$s U per day</string>
-    <string name="history_isf">Sensitivity ISF (%1$s per U, from)</string>
-    <string name="history_cr">Carb ratio (g per U, from)</string>
     <string name="history_dia">Insulin duration %1$s h</string>
     <string name="history_no_settings">This record does not carry sensitivity or carb ratio.</string>
     <string name="changes_before">Before</string>

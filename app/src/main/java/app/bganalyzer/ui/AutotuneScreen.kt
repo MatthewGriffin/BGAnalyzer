@@ -83,26 +83,6 @@ fun AutotuneScreen(
 private fun rate(v: Double) = String.format(Locale.getDefault(), "%.2f", v)
 private fun hourLabel(h: Int) = String.format(Locale.US, "%02d:00", h % 24)
 
-/** One table row: cells share the width by weight, and a rule is drawn under it. */
-@Composable
-private fun TableRow(cells: List<String>, weights: List<Float>, header: Boolean = false, colours: List<androidx.compose.ui.graphics.Color?> = emptyList(), note: String? = null) {
-    Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            cells.forEachIndexed { i, text ->
-                Text(
-                    text, Modifier.weight(weights[i]),
-                    textAlign = if (i == 0) TextAlign.Start else TextAlign.End,
-                    fontWeight = if (header || i == 2) FontWeight.Bold else FontWeight.Normal,
-                    style = if (header) MaterialTheme.typography.labelMedium else MaterialTheme.typography.bodyMedium,
-                    color = colours.getOrNull(i) ?: MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        }
-        note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 6.dp)) }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-    }
-}
-
 @Composable
 private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClear: () -> Unit) {
     val a: AutotuneAdvice = s.advice
