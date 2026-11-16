@@ -15,6 +15,16 @@ object ProfileChanges {
         return last
     }
 
+    /**
+     * The profile configurations that really took effect, oldest first: only the last steady switch of each local day counts
+     * (several edits in one day are one change), and a day that ends on the same settings as the day before is dropped.
+     */
+    fun dailyChanges(changes: List<EffectiveProfile>, zone: java.time.ZoneId): List<EffectiveProfile> {
+        val perDay = changes.filter { !it.isTemporary }.sortedBy { it.startMs }
+            .groupBy { java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(it.startMs), zone) }.values.map { it.last() }.sortedBy { it.startMs }
+        return perDay.filterIndexed { i, c -> i == 0 || !sameSettings(perDay[i - 1], c) }
+    }
+
     /** The profile Autotune should start from: the latest non-temporary one in force at [nowMs] (a running temporary switch is ignored). */
     fun baseline(entries: List<EffectiveProfile>, nowMs: Long): EffectiveProfile? =
         entries.filter { !it.isTemporary && it.startMs <= nowMs }.maxByOrNull { it.startMs }
