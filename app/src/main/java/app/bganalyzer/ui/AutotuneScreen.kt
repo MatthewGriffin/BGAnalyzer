@@ -87,6 +87,7 @@ private fun hourLabel(h: Int) = String.format(Locale.US, "%02d:00", h % 24)
 private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClear: () -> Unit) {
     val a: AutotuneAdvice = s.advice
     Text(stringResource(R.string.autotune_days_used, a.daysTuned, s.days), style = MaterialTheme.typography.bodySmall)
+    a.swingMgdlPerHour?.let { sw -> a.cvPct?.let { cv -> Text(stringResource(R.string.stability_overall, unit.format(sw), unit.label, String.format(Locale.getDefault(), "%.0f", cv)), style = MaterialTheme.typography.bodySmall) } }
     s.profileChangeMs?.let {
         val whenText = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(it))
         Text(stringResource(R.string.autotune_since_change, whenText), style = MaterialTheme.typography.bodySmall)
@@ -142,7 +143,10 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
                 TableRow(
                     listOf(hourLabel(h.hour), rate(now), rate(sug), String.format(Locale.getDefault(), "%+.0f%%", change), h.confidence.name.lowercase()), w,
                     colours = listOf(null, null, null, null, confidenceColor(h.confidence)),
-                    note = h.heldReason?.let { stringResource(R.string.autotune_held, rate(AutotuneAdvisor.roundToPumpStep(h.tuned)), it) },
+                    note = listOfNotNull(
+                        h.heldReason?.let { stringResource(R.string.autotune_held, rate(AutotuneAdvisor.roundToPumpStep(h.tuned)), it) },
+                        if (h.unsteady && h.swingMgdlPerHour != null) stringResource(R.string.autotune_unsteady, unit.format(h.swingMgdlPerHour), unit.label) else null,
+                    ).joinToString(" ").ifEmpty { null },
                 )
             }
             val totalNow = a.hours.sumOf { it.current }

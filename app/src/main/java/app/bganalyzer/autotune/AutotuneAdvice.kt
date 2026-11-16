@@ -1,6 +1,9 @@
 package app.bganalyzer.autotune
 
 import app.bganalyzer.domain.Confidence
+import app.bganalyzer.domain.Swing
+import app.bganalyzer.domain.SwingSum
+import app.bganalyzer.domain.TimeInRange
 import java.time.Instant
 import java.time.ZoneId
 
@@ -14,6 +17,10 @@ data class HourAdvice(
     val suggested: Double,
     val heldReason: String?,
     val confidence: Confidence,
+    /** Average rate of change of glucose in this hour over the used days, mg/dL per hour (see [Swing]); null with too little data. */
+    val swingMgdlPerHour: Double? = null,
+    /** Glucose swings much more in this hour than in a typical hour, so its confidence was lowered one step. */
+    val unsteady: Boolean = false,
 )
 
 data class AutotuneAdvice(
@@ -23,6 +30,9 @@ data class AutotuneAdvice(
     val daysTuned: Int,
     val mealsUsed: Int = 0,
     val isfPoints: Int = 0,
+    /** Over all used days: coefficient of variation (%) and average rate of change (mg/dL per hour). */
+    val cvPct: Double? = null,
+    val swingMgdlPerHour: Double? = null,
 )
 
 object AutotuneAdvisor {
@@ -34,6 +44,16 @@ object AutotuneAdvisor {
     /** Fewer meals than this over the run makes the carb ratio low confidence; fewer insulin-only readings does the same for the ISF. */
     const val MIN_MEALS = 10
     const val MIN_ISF_POINTS = 20
+
+    /**
+     * An hour counts as unsteady when its average rate of change is above [UNSTEADY_RATIO] times that of the median hour
+     * and at least [UNSTEADY_FLOOR_MGDL_PER_H] (1 mmol/L per hour). Where glucose swings, positive and negative deviations cancel in
+     * the average, so the suggestion there is less trustworthy: its confidence drops one step. It never blocks a suggestion.
+     * A heuristic with no clinical standard behind it; on 14 real days it flagged 2 of 24 hours.
+     */
+    const val UNSTEADY_RATIO = 1.5
+    const val UNSTEADY_FLOOR_MGDL_PER_H = 18.0
+    private const val MIN_SWING_HOURS = 1.0
 
     /** Share of days with a low in an hour of day that stops a basal increase there. */
     const val LOW_DAY_SHARE = 0.10
@@ -53,6 +73,18 @@ object AutotuneAdvisor {
             perHour[h][t.toLocalDate()] = (perHour[h][t.toLocalDate()] ?: false) || low
             if (r.mgdl < 54) veryLow[h] = true
         }
+        // how much glucose moves in each hour of the day (local time), over the used days
+        val sorted = readings.sortedBy { it.timeMs }
+        val times = LongArray(sorted.size) { sorted[it].timeMs }
+        val values = DoubleArray(sorted.size) { sorted[it].mgdl }
+        val perHourSwing = Array(24) { SwingSum() }
+        Swing.steps(times, values) { i, j, d, hrs ->
+            // a step across the hour boundary belongs to neither hour, so a swing in one hour does not flag its neighbour
+            val h1 = Instant.ofEpochMilli(times[i]).atZone(zone).hour
+            if (h1 == Instant.ofEpochMilli(times[j]).atZone(zone).hour) perHourSwing[h1].add(d, hrs)
+        }
+        val swings = perHourSwing.map { if (it.hours >= MIN_SWING_HOURS) it.perHour else null }
+        val typical = swings.filterNotNull().sorted().let { if (it.isEmpty()) null else it[it.size / 2] }
         val hours = (0..23).map { h ->
             val cur = result.original.basal[h]
             val new = result.tuned.basal[h]
@@ -66,8 +98,14 @@ object AutotuneAdvisor {
                 result.daysTuned >= 10 && untuned == 0 -> Confidence.HIGH
                 else -> Confidence.MEDIUM
             }
-            HourAdvice(h, cur, new, if (held != null) cur else new, held, conf)
+            val swing = swings[h]
+            val unsteady = swing != null && typical != null && swing > UNSTEADY_RATIO * typical && swing >= UNSTEADY_FLOOR_MGDL_PER_H
+            val finalConf = if (!unsteady) conf else when (conf) { Confidence.HIGH -> Confidence.MEDIUM; else -> Confidence.LOW }
+            HourAdvice(h, cur, new, if (held != null) cur else new, held, finalConf, swing, unsteady)
         }
-        return AutotuneAdvice(hours, result.original.isf, result.tuned.isf, result.original.ic, result.tuned.ic, result.daysTuned, result.mealsUsed, result.isfPoints)
+        return AutotuneAdvice(
+            hours, result.original.isf, result.tuned.isf, result.original.ic, result.tuned.ic, result.daysTuned, result.mealsUsed, result.isfPoints,
+            if (values.isEmpty()) null else TimeInRange.of(values.toList()).cvPct, Swing.of(times, values).perHour,
+        )
     }
 }

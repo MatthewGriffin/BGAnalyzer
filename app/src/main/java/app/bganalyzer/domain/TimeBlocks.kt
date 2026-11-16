@@ -15,6 +15,8 @@ data class BlockStats(
     /** Days with at least one reading below the low limit / the very-low limit. */
     val lowDays: Int,
     val veryLowDays: Int,
+    /** Average rate of change in mg/dL per hour over the counted days (see [Swing]); null with nothing measured. */
+    val swingMgdlPerHour: Double? = null,
 ) {
     val enoughDays get() = days >= TimeBlocks.MIN_DAYS
 }
@@ -39,23 +41,25 @@ object TimeBlocks {
         require(blockHours in ALLOWED_BLOCK_HOURS) { "block size must divide 24" }
         val blocks = 24 / blockHours
         // One cell per (local date, block): the readings that fall in that block on that day.
-        val cells = HashMap<Pair<java.time.LocalDate, Int>, MutableList<Double>>()
+        val cells = HashMap<Pair<java.time.LocalDate, Int>, MutableList<GlucoseReadingEntity>>()
         for (r in readings) {
             val local = Instant.ofEpochMilli(r.timestampMs).atZone(zone)
-            cells.getOrPut(local.toLocalDate() to local.hour / blockHours) { ArrayList() }.add(r.mgdl)
+            cells.getOrPut(local.toLocalDate() to local.hour / blockHours) { ArrayList() }.add(r)
         }
         val expected = blockHours * 12
         return (0 until blocks).map { b ->
             val used = cells.filter { it.key.second == b && it.value.size >= expected * MIN_COVERAGE }.values
-            val all = used.flatten()
+            val all = used.flatten().map { it.mgdl }
+            val swing = SwingSum().also { sum -> used.forEach { sum.add(Swing.of(it)) } }
             BlockStats(
                 startHour = b * blockHours,
                 endHour = (b + 1) * blockHours,
                 days = used.size,
                 readings = all.size,
                 timeInRange = TimeInRange.of(all, ranges),
-                lowDays = used.count { cell -> cell.any { it < ranges.lowBelow } },
-                veryLowDays = used.count { cell -> cell.any { it < ranges.veryLowBelow } },
+                lowDays = used.count { cell -> cell.any { it.mgdl < ranges.lowBelow } },
+                veryLowDays = used.count { cell -> cell.any { it.mgdl < ranges.veryLowBelow } },
+                swingMgdlPerHour = swing.perHour,
             )
         }
     }

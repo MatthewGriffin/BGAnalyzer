@@ -114,6 +114,8 @@ fun GlucoseScreen(
                 TirRow(stringResource(R.string.tir_low, unit.format(ranges.veryLowBelow), unit.format(ranges.lowBelow)), tir.lowPct, glucoseColor(GlucoseBand.LOW))
                 TirRow(stringResource(R.string.tir_very_low, unit.format(ranges.veryLowBelow)), tir.veryLowPct, glucoseColor(GlucoseBand.VERY_LOW))
                 Text(stringResource(R.string.stat_average, unit.format(tir.meanMgdl), unit.label))
+                val swing = androidx.compose.runtime.remember(state.points) { app.bganalyzer.domain.Swing.of(state.points).perHour }
+                StabilityLine(swing, tir.cvPct, unit)
                 Text(stringResource(R.string.stat_readings, tir.count, coverage), style = MaterialTheme.typography.bodySmall)
                 if (coverage < 70) {
                     Text(stringResource(R.string.stat_low_coverage), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

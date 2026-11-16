@@ -130,7 +130,7 @@
     <string name="excluded_restore">Restore</string>
     <string name="changes_basal">Total basal per day: %1$s U before, %2$s U after</string>
     <string name="timeline_title">Changes in this period</string>
-    <string name="timeline_intro">Profile switches and logged site, insulin and sensor changes, only those with enough glucose on both sides to compare, newest first and one card per day (the day\'s latest change, with any others that day named in the title). Each shows up to 7 days of glucose either side, stopping at the neighbouring change. This shows what happened, not why: meals, illness and activity differ between weeks.</string>
+    <string name="timeline_intro">Profile switches and logged site, insulin and sensor changes, only those with enough glucose on both sides to compare, newest first and one card per day (the day\'s latest change, with any others that day named in the title). Each shows up to 7 days of glucose either side, stopping at the neighbouring change. This shows what happened, not why: meals, illness and activity differ between weeks. Swing is how much glucose moves, as an average rate of change (a flat line is 0); lower is steadier.</string>
     <string name="timeline_none">No profile, site, insulin or sensor changes in this period have enough glucose on both sides to compare (at least 2 days each side).</string>
     <string name="history_title">Profile history</string>
     <string name="history_intro">Every profile configuration that took effect, newest first, with the glucose it saw while it was in force. If a newer one did worse, open the older one to read its settings back. Edits made in one day count as one configuration.</string>
@@ -146,6 +146,12 @@
     <string name="history_basal_total">Total basal %1$s U per day</string>
     <string name="history_dia">Insulin duration %1$s h</string>
     <string name="history_no_settings">This record does not carry sensitivity or carb ratio.</string>
+    <string name="stability_line">Swing %1$s %2$s per hour, CV %3$s%%</string>
+    <string name="stability_steadier">Steadier after: swing down %1$s%%</string>
+    <string name="stability_less_steady">Less steady after: swing up %1$s%%</string>
+    <string name="stability_same">About as steady after</string>
+    <string name="stability_overall">Over the days used: swing %1$s %2$s per hour, CV %3$s%% (36%% or less is the consensus target, but a steady up and down can pass it).</string>
+    <string name="autotune_unsteady">Glucose swings a lot in this hour (%1$s %2$s per hour), so treat this suggestion with extra caution.</string>
     <string name="changes_before">Before</string>
     <string name="changes_after">After</string>
     <string name="changes_line_head">%1$s (%2$s days):</string>
