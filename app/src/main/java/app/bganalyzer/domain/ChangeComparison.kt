@@ -37,9 +37,7 @@ object ChangeComparison {
      * on the same settings as the day before is not a change at all.
      */
     fun compare(readings: List<GlucoseReadingEntity>, changes: List<EffectiveProfile>, periodFromMs: Long, nowMs: Long, zone: ZoneId = ZoneOffset.UTC): List<ChangeResult> {
-        val perDay = changes.filter { !it.isTemporary }.sortedBy { it.startMs }
-            .groupBy { LocalDate.ofInstant(Instant.ofEpochMilli(it.startMs), zone) }.values.map { it.last() }.sortedBy { it.startMs }
-        val sorted = perDay.filterIndexed { i, c -> i == 0 || !ProfileChanges.sameSettings(perDay[i - 1], c) }
+        val sorted = ProfileChanges.dailyChanges(changes, zone)
         return sorted.mapIndexedNotNull { i, c ->
             if (c.startMs < periodFromMs) return@mapIndexedNotNull null
             val prev = sorted.getOrNull(i - 1)

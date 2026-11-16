@@ -13,6 +13,9 @@ import app.bganalyzer.domain.BlockStats
 import app.bganalyzer.domain.EffectiveProfile
 import app.bganalyzer.domain.EquipmentChanges
 import app.bganalyzer.domain.EquipmentResult
+import app.bganalyzer.domain.ProfileChanges
+import app.bganalyzer.domain.ProfileConfig
+import app.bganalyzer.domain.ProfileHistory
 import app.bganalyzer.domain.ProfileResolver
 import app.bganalyzer.domain.ProfileTimeline
 import app.bganalyzer.domain.GlucoseUnit
@@ -53,6 +56,8 @@ data class PatternsState(
     val profileChanges: List<EffectiveProfile> = emptyList(),
     /** Glucose before and after each profile change in the period, newest first. */
     val changes: List<ChangeResult> = emptyList(),
+    /** Every profile configuration that took effect (newest first) with the glucose it saw: to read an old one back. */
+    val profileHistory: List<ProfileConfig> = emptyList(),
     /** Glucose before and after each site, insulin or sensor change in the period, newest first. */
     val equipment: List<EquipmentResult> = emptyList(),
 )
@@ -94,6 +99,12 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                                 windowReadings,
                                 resolver.changes(0L, to), from, to, zone,
                             ).reversed(),
+                            profileHistory = run {
+                                // glucose back to the oldest configuration shown, excluded days left out
+                                val configs = resolver.changes(0L, to)
+                                val oldest = ProfileChanges.dailyChanges(configs, zone).takeLast(ProfileHistory.MAX_CONFIGS).firstOrNull()?.startMs ?: to
+                                ProfileHistory.build(ExcludedDays.readings(db.glucoseReadingDao().between(oldest, to), zone, excludedDates), configs, zone, to)
+                            },
                             equipment = EquipmentChanges.compare(
                                 windowReadings,
                                 EquipmentChanges.from(db.treatmentDao().validBetween(from - ChangeComparison.WINDOW_DAYS * DAY_MS, to + 1)), from, to,

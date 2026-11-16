@@ -89,6 +89,7 @@ fun PatternsScreen(
             }
             Text(stringResource(R.string.patterns_meals_intro), style = MaterialTheme.typography.bodySmall)
             ChangesTimeline(state)
+            ProfileHistorySection(state.profileHistory, unit)
             // data quality last: the trends above are what this tab is for
             EmptyDaysNotice(state.emptyDays)
         }
@@ -273,4 +274,64 @@ private fun PeriodLine(label: String, p: app.bganalyzer.domain.PeriodSummary) {
         append(", ")
         withStyle(androidx.compose.ui.text.SpanStyle(color = orange)) { append(above) }
     })
+}
+
+/**
+ * Every profile configuration that took effect, newest first, each with the glucose it saw and, on request, its settings,
+ * so one that turned out worse can be read back and typed into AAPS again.
+ */
+@Composable
+private fun ProfileHistorySection(history: List<app.bganalyzer.domain.ProfileConfig>, unit: GlucoseUnit) {
+    if (history.isEmpty()) return
+    val fmt = androidx.compose.runtime.remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT) }
+    Text(stringResource(R.string.history_title), style = MaterialTheme.typography.titleMedium)
+    Text(stringResource(R.string.history_intro), style = MaterialTheme.typography.bodySmall)
+    history.forEachIndexed { i, c ->
+        var open by androidx.compose.runtime.saveable.rememberSaveable(c.profile.startMs) { androidx.compose.runtime.mutableStateOf(false) }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    fmt.format(java.util.Date(c.profile.startMs)) + " – " + (c.endMs?.let { fmt.format(java.util.Date(it)) } ?: stringResource(R.string.history_now)),
+                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    c.profile.label() + if (i == 0) " " + stringResource(R.string.history_current) else "",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(stringResource(R.string.history_basal_total, rate(app.bganalyzer.domain.ChangeComparison.totalBasal(c.profile.basal))), style = MaterialTheme.typography.bodySmall)
+                val s = c.summary
+                if (s.readings > 0 && s.days >= 0.5) {
+                    PeriodLine(stringResource(R.string.history_glucose), s)
+                } else {
+                    Text(stringResource(R.string.history_no_glucose), style = MaterialTheme.typography.bodySmall)
+                }
+                androidx.compose.material3.TextButton(onClick = { open = !open }) {
+                    Text(stringResource(if (open) R.string.history_hide else R.string.history_show))
+                }
+                if (open) ProfileSettingsTable(c.profile, unit)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileSettingsTable(p: app.bganalyzer.domain.EffectiveProfile, unit: GlucoseUnit) {
+    fun time(sec: Int) = String.format(Locale.US, "%02d:%02d", sec / 3600 % 24, sec / 60 % 60)
+    Text(stringResource(R.string.history_basal), style = MaterialTheme.typography.labelLarge)
+    p.basal.sortedBy { it.secondsFromMidnight }.forEach { Text(time(it.secondsFromMidnight) + "   " + rate(it.rateUph) + " U/h") }
+    Text(stringResource(R.string.history_basal_total, rate(app.bganalyzer.domain.ChangeComparison.totalBasal(p.basal))), style = MaterialTheme.typography.bodySmall)
+    val st = p.settings
+    if (st.isf.isEmpty() && st.carbRatio.isEmpty()) {
+        Text(stringResource(R.string.history_no_settings), style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    if (st.isf.isNotEmpty()) {
+        Text(stringResource(R.string.history_isf, unit.label), style = MaterialTheme.typography.labelLarge)
+        st.isf.forEach { Text(time(it.secondsFromMidnight) + "   " + unit.format(it.rateUph)) }
+    }
+    if (st.carbRatio.isNotEmpty()) {
+        Text(stringResource(R.string.history_cr), style = MaterialTheme.typography.labelLarge)
+        st.carbRatio.forEach { Text(time(it.secondsFromMidnight) + "   " + String.format(Locale.getDefault(), "%.2f", it.rateUph)) }
+    }
+    st.diaHours?.let { Text(stringResource(R.string.history_dia, String.format(Locale.getDefault(), "%.1f", it)), style = MaterialTheme.typography.labelLarge) }
 }
