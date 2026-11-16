@@ -129,10 +129,9 @@
     <string name="excluded_button">Exclude this day</string>
     <string name="excluded_restore">Restore</string>
     <string name="changes_basal">Total basal per day: %1$s U before, %2$s U after</string>
-    <string name="changes_not_enough">Not enough glucose data to compare (%1$s days before, %2$s days after; needs at least 2 days of readings each side).</string>
     <string name="timeline_title">Changes in this period</string>
-    <string name="timeline_intro">Profile switches and logged site, insulin and sensor changes, newest first and one card per day (the day\'s latest change, with any others that day named in the title). Each shows up to 7 days of glucose either side, stopping at the neighbouring change. This shows what happened, not why: meals, illness and activity differ between weeks.</string>
-    <string name="timeline_none">No profile, site, insulin or sensor changes in this period.</string>
+    <string name="timeline_intro">Profile switches and logged site, insulin and sensor changes, only those with enough glucose on both sides to compare, newest first and one card per day (the day\'s latest change, with any others that day named in the title). Each shows up to 7 days of glucose either side, stopping at the neighbouring change. This shows what happened, not why: meals, illness and activity differ between weeks.</string>
+    <string name="timeline_none">No profile, site, insulin or sensor changes in this period have enough glucose on both sides to compare (at least 2 days each side).</string>
     <string name="changes_before">Before</string>
     <string name="changes_after">After</string>
     <string name="changes_line_head">%1$s (%2$s days):</string>

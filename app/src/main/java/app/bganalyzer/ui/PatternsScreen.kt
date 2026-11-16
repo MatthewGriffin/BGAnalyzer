@@ -218,9 +218,9 @@ private fun ChangesTimeline(state: PatternsState) {
     val entries = buildList {
         state.changes.forEach { add(TimelineEntry(it.change.startMs, "Profile: " + it.change.label(), it.basalPerDayBefore, it.basalPerDayAfter, it.before, it.after)) }
         state.equipment.forEach { add(TimelineEntry(it.change.startMs, it.change.label, null, null, it.before, it.after)) }
-        // temporary profile switches are not compared (they end on their own), but they belong on the timeline
-        state.profileChanges.filter { it.isTemporary }.forEach { add(TimelineEntry(it.startMs, "Profile: " + it.label(), null, null, null, null)) }
     }
+        // Only changes with glucose to compare on both sides are worth a card
+        .filter { it.before?.enough == true && it.after?.enough == true }
         // One card per day, anchored at the day's most recent change; the others that day are named in its title
         .let { all ->
             val zone = runCatching { java.time.ZoneId.of(state.zoneName) }.getOrDefault(java.time.ZoneId.systemDefault())
@@ -243,15 +243,8 @@ private fun ChangesTimeline(state: PatternsState) {
                 Text(fmt.format(java.util.Date(e.timeMs)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 Text(e.label, style = MaterialTheme.typography.titleSmall)
                 e.basalBefore?.let { Text(stringResource(R.string.changes_basal, rate(it), rate(e.basalAfter ?: it)), style = MaterialTheme.typography.bodySmall) }
-                val before = e.before; val after = e.after
-                if (before != null && after != null) {
-                    if (!before.enough || !after.enough) {
-                        Text(stringResource(R.string.changes_not_enough, pct(before.days), pct(after.days)))
-                    } else {
-                        PeriodLine(stringResource(R.string.changes_before), before)
-                        PeriodLine(stringResource(R.string.changes_after), after)
-                    }
-                }
+                e.before?.let { PeriodLine(stringResource(R.string.changes_before), it) }
+                e.after?.let { PeriodLine(stringResource(R.string.changes_after), it) }
             }
         }
     }
