@@ -7,7 +7,7 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 
 /** Glucose over one stretch of time. [days] is the stretch length, [readings] how many readings fell in it. */
-data class PeriodSummary(val days: Double, val readings: Int, val timeInRange: TimeInRange) {
+data class PeriodSummary(val days: Double, val readings: Int, val timeInRange: TimeInRange, val swingMgdlPerHour: Double? = null) {
     /** Enough readings to compare: at least two days' worth at one reading per 5 minutes, 60% present. */
     val enough get() = days >= ChangeComparison.MIN_DAYS && readings >= days * 288 * 0.6
 }
@@ -53,7 +53,7 @@ object ChangeComparison {
 
     internal fun summary(readings: List<GlucoseReadingEntity>, from: Long, to: Long): PeriodSummary {
         val inside = readings.filter { it.timestampMs in from until to }
-        return PeriodSummary(maxOf(0L, to - from) / DAY_MS.toDouble(), inside.size, TimeInRange.of(inside.map { it.mgdl }))
+        return PeriodSummary(maxOf(0L, to - from) / DAY_MS.toDouble(), inside.size, TimeInRange.of(inside.map { it.mgdl }), Swing.of(inside).perHour)
     }
 
     /** Units per day of a basal schedule. */

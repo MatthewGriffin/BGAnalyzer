@@ -88,7 +88,7 @@ fun PatternsScreen(
                 TimeBlockCard(g, state.basal?.blocks?.firstOrNull { it.startHour == g.startHour }, state.meals.firstOrNull { it.startHour == g.startHour }, unit)
             }
             Text(stringResource(R.string.patterns_meals_intro), style = MaterialTheme.typography.bodySmall)
-            ChangesTimeline(state)
+            ChangesTimeline(state, unit)
             ProfileHistorySection(state.profileHistory, unit)
             // data quality last: the trends above are what this tab is for
             EmptyDaysNotice(state.emptyDays)
@@ -129,6 +129,7 @@ private fun GlucoseLines(b: BlockStats, unit: GlucoseUnit) {
     Text(stringResource(R.string.patterns_below, pct(tir.lowPct + tir.veryLowPct)), color = glucoseColor(GlucoseBand.LOW))
     Text(stringResource(R.string.patterns_above, pct(tir.highPct + tir.veryHighPct)), color = glucoseColor(GlucoseBand.HIGH))
     Text(stringResource(R.string.patterns_average, unit.format(tir.meanMgdl), unit.label))
+    StabilityLine(b.swingMgdlPerHour, tir.cvPct, unit)
     if (b.lowDays > 0) Text(stringResource(R.string.patterns_low_days, b.lowDays, b.days), color = glucoseColor(GlucoseBand.LOW))
     if (b.veryLowDays > 0) Text(stringResource(R.string.patterns_very_low_days, b.veryLowDays, b.days), color = glucoseColor(GlucoseBand.VERY_LOW))
 }
@@ -214,7 +215,7 @@ private fun BasalLines(s: BasalBlockStats) {
  * changes, each with glucose before and after it. Shows what happened, not why.
  */
 @Composable
-private fun ChangesTimeline(state: PatternsState) {
+private fun ChangesTimeline(state: PatternsState, unit: GlucoseUnit) {
     val fmt = androidx.compose.runtime.remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT) }
     val entries = buildList {
         state.changes.forEach { add(TimelineEntry(it.change.startMs, "Profile: " + it.change.label(), it.basalPerDayBefore, it.basalPerDayAfter, it.before, it.after)) }
@@ -244,8 +245,9 @@ private fun ChangesTimeline(state: PatternsState) {
                 Text(fmt.format(java.util.Date(e.timeMs)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 Text(e.label, style = MaterialTheme.typography.titleSmall)
                 e.basalBefore?.let { Text(stringResource(R.string.changes_basal, rate(it), rate(e.basalAfter ?: it)), style = MaterialTheme.typography.bodySmall) }
-                e.before?.let { PeriodLine(stringResource(R.string.changes_before), it) }
-                e.after?.let { PeriodLine(stringResource(R.string.changes_after), it) }
+                e.before?.let { PeriodLine(stringResource(R.string.changes_before), it); StabilityLine(it.swingMgdlPerHour, it.timeInRange.cvPct, unit) }
+                e.after?.let { PeriodLine(stringResource(R.string.changes_after), it); StabilityLine(it.swingMgdlPerHour, it.timeInRange.cvPct, unit) }
+                if (e.before != null && e.after != null) StabilityVerdict(e.before, e.after)
             }
         }
     }
@@ -302,6 +304,7 @@ private fun ProfileHistorySection(history: List<app.bganalyzer.domain.ProfileCon
                 val s = c.summary
                 if (s.readings > 0 && s.days >= 0.5) {
                     PeriodLine(stringResource(R.string.history_glucose), s)
+                    StabilityLine(s.swingMgdlPerHour, s.timeInRange.cvPct, unit)
                 } else {
                     Text(stringResource(R.string.history_no_glucose), style = MaterialTheme.typography.bodySmall)
                 }

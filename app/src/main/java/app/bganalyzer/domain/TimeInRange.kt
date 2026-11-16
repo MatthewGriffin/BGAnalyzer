@@ -21,6 +21,8 @@ data class TimeInRange(
     val high: Int,
     val veryHigh: Int,
     val meanMgdl: Double,
+    /** Standard deviation of the readings, mg/dL. */
+    val sdMgdl: Double = 0.0,
 ) {
     private fun pct(n: Int) = if (count == 0) 0.0 else 100.0 * n / count
     val veryLowPct get() = pct(veryLow)
@@ -29,6 +31,8 @@ data class TimeInRange(
     val inRangePct get() = pct(inRange)
     val highPct get() = pct(high)
     val veryHighPct get() = pct(veryHigh)
+    /** Coefficient of variation: SD as a percentage of the mean. The consensus target is 36% or less, but that is a low-glucose risk limit, not a measure of flatness (see [Swing]). */
+    val cvPct get() = if (meanMgdl > 0) 100.0 * sdMgdl / meanMgdl else 0.0
 
     companion object {
         val EMPTY = TimeInRange(0, 0, 0, 0, 0, 0, 0.0)
@@ -48,7 +52,9 @@ data class TimeInRange(
                 v <= ranges.veryHighAbove -> high++
                 else -> veryHigh++
             }
-            return TimeInRange(mgdl.size, veryLow, low, inRange, high, veryHigh, mgdl.average())
+            val mean = mgdl.average()
+            val sd = kotlin.math.sqrt(mgdl.sumOf { (it - mean) * (it - mean) } / mgdl.size)
+            return TimeInRange(mgdl.size, veryLow, low, inRange, high, veryHigh, mean, sd)
         }
     }
 }

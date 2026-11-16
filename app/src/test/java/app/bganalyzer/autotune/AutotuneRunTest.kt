@@ -70,6 +70,31 @@ class AutotuneAdvisorTest {
         assertEquals(0.9, AutotuneAdvisor.advise(result(0.9), readings.map { it.copy(mgdl = 50.0) }, zone).hours[3].suggested, 0.0)
         assertEquals(1.15, AutotuneAdvisor.advise(result(1.15), readings, zone).hours[3].suggested, 0.0)
     }
+
+    @Test fun anHourWhereGlucoseSwingsLowersConfidenceButNeverBlocksTheSuggestion() {
+        // 7 days of gently drifting glucose with a sawtooth of 4 to 9 mmol/L in hour 10 only
+        val readings = (0 until 7).flatMap { d ->
+            (0 until 288).map { i ->
+                val t = d * 86_400_000L + i * 300_000L
+                val hour = i / 12
+                val v = if (hour == 10) { val ph = (i % 24) / 24.0; 72.0 + 90.0 * (if (ph < 0.5) ph * 2 else 2 - ph * 2) } else 117.0 + (i % 3)
+                AtReading(t, v)
+            }
+        }
+        val a = AutotuneAdvisor.advise(result(1.15), readings, zone)
+        assertTrue(a.hours[10].unsteady)
+        assertEquals(1, a.hours.count { it.unsteady })
+        assertEquals(app.bganalyzer.domain.Confidence.LOW, a.hours[10].confidence) // 7 days: MEDIUM, one step down
+        assertEquals(app.bganalyzer.domain.Confidence.MEDIUM, a.hours[11].confidence)
+        // the suggestion itself is untouched: swing never holds or changes a rate
+        assertEquals(a.hours[3].tuned, a.hours[3].suggested, 0.0)
+        assertNotNull(a.swingMgdlPerHour); assertNotNull(a.cvPct)
+    }
+
+    @Test fun aFlatTraceFlagsNoHourAsUnsteady() {
+        val readings = (0 until 7).flatMap { d -> (0 until 288).map { AtReading(d * 86_400_000L + it * 300_000L, 117.0 + (it % 3)) } }
+        assertTrue(AutotuneAdvisor.advise(result(1.15), readings, zone).hours.none { it.unsteady })
+    }
 }
 
 class NoInsulinDayTest {
