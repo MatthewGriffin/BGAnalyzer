@@ -221,6 +221,15 @@ private fun ChangesTimeline(state: PatternsState) {
         // temporary profile switches are not compared (they end on their own), but they belong on the timeline
         state.profileChanges.filter { it.isTemporary }.forEach { add(TimelineEntry(it.startMs, "Profile: " + it.label(), null, null, null, null)) }
     }
+        // One card per day, anchored at the day's most recent change; the others that day are named in its title
+        .let { all ->
+            val zone = runCatching { java.time.ZoneId.of(state.zoneName) }.getOrDefault(java.time.ZoneId.systemDefault())
+            all.groupBy { java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(it.timeMs), zone) }.values.map { day ->
+                val byTime = day.sortedBy { it.timeMs }
+                val latest = byTime.last()
+                latest.copy(label = byTime.map { it.label }.distinct().joinToString(", "))
+            }
+        }
         .sortedByDescending { it.timeMs }
     Text(stringResource(R.string.timeline_title), style = MaterialTheme.typography.titleMedium)
     if (entries.isEmpty()) {
@@ -249,7 +258,7 @@ private fun ChangesTimeline(state: PatternsState) {
     if (entries.size > 15) Text(stringResource(R.string.profile_changes_more, entries.size - 15), style = MaterialTheme.typography.bodySmall)
 }
 
-private class TimelineEntry(
+private data class TimelineEntry(
     val timeMs: Long, val label: String,
     val basalBefore: Double?, val basalAfter: Double?,
     val before: app.bganalyzer.domain.PeriodSummary?, val after: app.bganalyzer.domain.PeriodSummary?,
@@ -264,7 +273,7 @@ private fun PeriodLine(label: String, p: app.bganalyzer.domain.PeriodSummary) {
     val below = stringResource(R.string.changes_below, pct(t.lowPct + t.veryLowPct))
     val above = stringResource(R.string.changes_above, pct(t.highPct + t.veryHighPct))
     Text(androidx.compose.ui.text.buildAnnotatedString {
-        append(head)
+        append(head); append(' ')
         withStyle(androidx.compose.ui.text.SpanStyle(color = green)) { append(inRange) }
         append(", ")
         withStyle(androidx.compose.ui.text.SpanStyle(color = red)) { append(below) }
