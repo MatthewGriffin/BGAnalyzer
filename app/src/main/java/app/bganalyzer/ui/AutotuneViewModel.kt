@@ -39,7 +39,7 @@ data class DayQualityState(val excluded: List<ExcludedDayEntity> = emptyList(), 
 sealed interface AutotuneState {
     data object Idle : AutotuneState
     data class Running(val day: Int, val of: Int) : AutotuneState
-    data class Done(val advice: AutotuneAdvice, val result: AutotuneResult, val days: Int, val profileChangeMs: Long? = null) : AutotuneState
+    data class Done(val advice: AutotuneAdvice, val result: AutotuneResult, val days: Int, val profileChangeMs: Long? = null, val usedFirst: java.time.LocalDate? = null, val usedLast: java.time.LocalDate? = null) : AutotuneState
     data class Failed(val message: String) : AutotuneState
 }
 
@@ -113,7 +113,7 @@ class AutotuneViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun compute(days: Int): AutotuneState =
         when (val r = AutotuneFromDb.run(db, days, _peak.value, System.currentTimeMillis()) { d, n -> _state.value = AutotuneState.Running(d, n) }) {
             is AutotuneFromDb.Outcome.Failed -> AutotuneState.Failed(r.message)
-            is AutotuneFromDb.Outcome.Done -> AutotuneState.Done(r.advice, r.result, days, r.profileChangeMs)
+            is AutotuneFromDb.Outcome.Done -> AutotuneState.Done(r.advice, r.result, days, r.profileChangeMs, r.usedFirst, r.usedLast)
         }
 
     companion object {

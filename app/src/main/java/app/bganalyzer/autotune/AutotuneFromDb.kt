@@ -11,7 +11,7 @@ import java.time.ZoneId
 /** Reads the saved data and runs autotune over it: the part of an autotune run that is not screen code. */
 object AutotuneFromDb {
     sealed interface Outcome {
-        data class Done(val advice: AutotuneAdvice, val result: AutotuneResult, val profileChangeMs: Long? = null) : Outcome
+        data class Done(val advice: AutotuneAdvice, val result: AutotuneResult, val profileChangeMs: Long? = null, val usedFirst: java.time.LocalDate? = null, val usedLast: java.time.LocalDate? = null) : Outcome
         data class Failed(val message: String) : Outcome
     }
 
@@ -67,6 +67,8 @@ object AutotuneFromDb {
         // the low-glucose guard looks only at the days that were used, not at skipped (no insulin, excluded) days
         val skippedDates = result.skipped.map { it.date }.toSet()
         val usedReadings = readings.filter { java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(it.timeMs - AutotuneRun.START_HOUR * HOUR_MS), zone).toString() !in skippedDates }
-        return Outcome.Done(AutotuneAdvisor.advise(result, usedReadings, zone), result, change?.startMs)
+        val endDate = java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(end), zone)
+        val usedDates = (days downTo 1).map { endDate.minusDays(it.toLong()) }.filter { it.toString() !in skippedDates }
+        return Outcome.Done(AutotuneAdvisor.advise(result, usedReadings, zone), result, change?.startMs, usedDates.firstOrNull(), usedDates.lastOrNull())
     }
 }

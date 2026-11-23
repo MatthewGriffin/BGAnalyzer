@@ -86,8 +86,13 @@ private fun hourLabel(h: Int) = String.format(Locale.US, "%02d:00", h % 24)
 @Composable
 private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClear: () -> Unit) {
     val a: AutotuneAdvice = s.advice
+    ActionSummary(a)
     SectionCard(stringResource(R.string.autotune_result_title)) {
         Text(stringResource(R.string.autotune_days_used, a.daysTuned, s.days), style = MaterialTheme.typography.bodyMedium)
+        if (s.usedFirst != null && s.usedLast != null) {
+            val f = java.time.format.DateTimeFormatter.ofPattern("d MMM")
+            Text(stringResource(R.string.autotune_window, s.usedFirst.format(f), s.usedLast.format(f)), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         a.swingMgdlPerHour?.let { sw -> a.cvPct?.let { cv ->
             TileRow {
                 StatTile(unit.format(sw), stringResource(R.string.tile_swing, unit.label))
@@ -112,18 +117,16 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
             val w = listOf(2.2f, 1f, 1f)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             TableRow(listOf("", stringResource(R.string.autotune_col_now), stringResource(R.string.autotune_col_suggested)), w, header = true)
+            val keep = stringResource(R.string.autotune_keep)
             TableRow(
-                listOf(stringResource(R.string.autotune_row_isf, unit.label), unit.format(a.currentIsf), unit.format(a.tunedIsf)), w,
-                colours = listOf(null, null, if (lowIsf) confidenceColor(app.bganalyzer.domain.Confidence.LOW) else confidenceColor(app.bganalyzer.domain.Confidence.HIGH)),
+                listOf(stringResource(R.string.autotune_row_isf, unit.label), unit.format(a.currentIsf), if (lowIsf) keep else unit.format(a.tunedIsf)), w,
+                colours = listOf(null, null, if (lowIsf) MaterialTheme.colorScheme.onSurfaceVariant else confidenceColor(app.bganalyzer.domain.Confidence.HIGH)),
+                note = if (lowIsf) stringResource(R.string.autotune_isf_too_little, a.isfPoints, AutotuneAdvisor.MIN_ISF_POINTS) else null,
             )
             TableRow(
-                listOf(stringResource(R.string.autotune_row_cr), String.format(Locale.getDefault(), "%.1f", a.currentCarbRatio), String.format(Locale.getDefault(), "%.1f", a.tunedCarbRatio)), w,
-                colours = listOf(null, null, if (lowCr) confidenceColor(app.bganalyzer.domain.Confidence.LOW) else confidenceColor(app.bganalyzer.domain.Confidence.HIGH)),
-            )
-            Text(
-                stringResource(R.string.autotune_evidence, a.mealsUsed, a.isfPoints) + if (lowCr || lowIsf) " " + stringResource(R.string.autotune_evidence_low) else "",
-                style = MaterialTheme.typography.bodySmall, color = if (lowCr || lowIsf) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(top = 6.dp),
+                listOf(stringResource(R.string.autotune_row_cr), String.format(Locale.getDefault(), "%.1f", a.currentCarbRatio), if (lowCr) keep else String.format(Locale.getDefault(), "%.1f", a.tunedCarbRatio)), w,
+                colours = listOf(null, null, if (lowCr) MaterialTheme.colorScheme.onSurfaceVariant else confidenceColor(app.bganalyzer.domain.Confidence.HIGH)),
+                note = if (lowCr) stringResource(R.string.autotune_cr_too_little, a.mealsUsed, AutotuneAdvisor.MIN_MEALS) else null,
             )
             Text(stringResource(R.string.autotune_isf_cr_note), style = MaterialTheme.typography.bodySmall)
         }
@@ -156,6 +159,9 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
                     colours = listOf(null, null, null, null, confidenceColor(h.confidence)),
                     note = listOfNotNull(
                         h.heldReason?.let { stringResource(R.string.autotune_held, rate(AutotuneAdvisor.roundToPumpStep(h.tuned)), it) },
+                        if (h.heldReason == null && change >= 10) stringResource(R.string.autotune_why_up) else null,
+                        if (h.heldReason == null && change <= -10) stringResource(R.string.autotune_why_down) else null,
+                        if (h.limited && h.heldReason == null) stringResource(R.string.autotune_limited) else null,
                         if (h.unsteady && h.swingMgdlPerHour != null) stringResource(R.string.autotune_unsteady, unit.format(h.swingMgdlPerHour), unit.label) else null,
                     ).joinToString(" ").ifEmpty { null },
                 )
@@ -169,4 +175,35 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
     }
 
     TextButton(onClick = onClear) { Text(stringResource(R.string.autotune_clear)) }
+}
+
+/** The answer to "what should I do": one headline and counts, from the hourly suggestions. Advice only: nothing is changed. */
+@Composable
+private fun ActionSummary(a: AutotuneAdvice) {
+    val rows = a.hours.map { h ->
+        val sug = AutotuneAdvisor.roundToPumpStep(h.suggested)
+        h to (if (h.current > 0) (sug / h.current - 1) * 100 else 0.0)
+    }
+    val raised = rows.count { it.second >= 10 }
+    val lowered = rows.count { it.second <= -10 }
+    val held = a.hours.count { it.heldReason != null }
+    val lowConf = a.hours.count { it.confidence == app.bganalyzer.domain.Confidence.LOW }
+    val biggest = rows.filter { it.first.heldReason == null }.maxByOrNull { kotlin.math.abs(it.second) }
+    val tooEarly = a.daysTuned < 5
+    val headline = when {
+        tooEarly -> stringResource(R.string.autotune_sum_early, a.daysTuned)
+        raised + lowered == 0 && held == 0 -> stringResource(R.string.autotune_sum_fine)
+        biggest != null && kotlin.math.abs(biggest.second) >= 10 -> stringResource(R.string.autotune_sum_change, hourLabel(biggest.first.hour), String.format(Locale.getDefault(), "%+.0f%%", biggest.second))
+        else -> stringResource(R.string.autotune_sum_held_only)
+    }
+    SectionCard(stringResource(R.string.autotune_sum_title)) {
+        Text(headline, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+        TileRow {
+            StatTile(raised.toString(), stringResource(R.string.autotune_sum_raised))
+            StatTile(lowered.toString(), stringResource(R.string.autotune_sum_lowered))
+            StatTile(held.toString(), stringResource(R.string.autotune_sum_held))
+            StatTile(lowConf.toString(), stringResource(R.string.autotune_sum_low_conf))
+        }
+        Text(stringResource(R.string.autotune_responsibility), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
