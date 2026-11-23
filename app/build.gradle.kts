@@ -71,6 +71,7 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
+    implementation(libs.androidx.work.runtime)
     implementation(libs.mongodb.driver.sync)
 
     testImplementation(libs.junit)

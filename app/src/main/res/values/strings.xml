@@ -194,7 +194,7 @@
     <string name="autotune_evidence">Based on %1$d meals and %2$d insulin-only readings.</string>
     <string name="autotune_evidence_low">That is little data: treat the carb ratio and sensitivity as low confidence.</string>
     <string name="tab_autotune">Autotune</string>
-    <string name="autotune_idle">Choose how many days to replay and press Run. Only days with insulin records are used.</string>
+    <string name="autotune_idle">Choose how many days to replay and press Run. Only days with insulin records are used. You are responsible for any change you make to basal rates or other pump settings: these are suggestions only, so check them with your diabetes care team first.</string>
     <string name="autotune_insulin_short_label">Insulin</string>
     <string name="autotune_insulin_rapid_short">Rapid (75 min)</string>
     <string name="autotune_insulin_ultra_short">Ultra-rapid (55 min)</string>
@@ -246,4 +246,10 @@
     <string name="autotune_sum_held">held for lows</string>
     <string name="autotune_sum_low_conf">low confidence</string>
     <string name="autotune_responsibility">You are responsible for any change you make to basal rates or other pump settings. These are suggestions only: check them with your diabetes care team first.</string>
+    <string name="backup_card_title">Encrypted backup</string>
+    <string name="connection_card_source">Nightscout source</string>
+    <string name="connection_card_data">Data on this phone</string>
+    <string name="connection_stored_caption">glucose readings stored</string>
+    <string name="background_sync_title">Sync in the background</string>
+    <string name="background_sync_hint">About every 3 hours when online, so the tabs open with fresh data. Read-only.</string>
 </resources>

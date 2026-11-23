@@ -47,7 +47,8 @@ fun BackupScreen(state: BackupState, onSave: (android.net.Uri, String) -> Unit, 
     val valid = passphrase.length >= BackupCodec.MIN_PASSPHRASE_LENGTH
     val busy = state == BackupState.Working
     ScreenScaffold(stringResource(R.string.backup_title)) {
-            Text(stringResource(R.string.backup_intro))
+        SectionCard(stringResource(R.string.backup_card_title)) {
+            Text(stringResource(R.string.backup_intro), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(
                 value = passphrase,
                 onValueChange = { passphrase = it },
@@ -57,19 +58,23 @@ fun BackupScreen(state: BackupState, onSave: (android.net.Uri, String) -> Unit, 
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, autoCorrectEnabled = false),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Button(
-                onClick = { saveLauncher.launch("bganalyzer-${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())}.bgbackup") },
-                enabled = valid && !busy,
-            ) { Text(stringResource(R.string.backup_save)) }
-            OutlinedButton(onClick = { restoreLauncher.launch(arrayOf("*/*")) }, enabled = valid && !busy) {
-                Text(stringResource(R.string.backup_restore))
+            androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = { saveLauncher.launch("bganalyzer-${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())}.bgbackup") },
+                    enabled = valid && !busy, modifier = Modifier.weight(1f),
+                ) { Text(stringResource(R.string.backup_save)) }
+                OutlinedButton(onClick = { restoreLauncher.launch(arrayOf("*/*")) }, enabled = valid && !busy, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.backup_restore))
+                }
             }
+        }
+        if (state != BackupState.Idle) SectionCard(null) {
             when (state) {
                 BackupState.Working -> Text(stringResource(R.string.backup_working))
                 is BackupState.Saved -> Text(stringResource(R.string.backup_saved, state.readings))
                 is BackupState.Restored -> {
                     Text(stringResource(R.string.backup_restored, state.readings))
-                    Text(stringResource(if (state.connectionRestored) R.string.backup_restored_connection else R.string.backup_restored_no_connection))
+                    Text(stringResource(if (state.connectionRestored) R.string.backup_restored_connection else R.string.backup_restored_no_connection), style = MaterialTheme.typography.bodySmall)
                 }
                 is BackupState.Failed -> {
                     Text(stringResource(R.string.backup_failed), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall)
@@ -78,4 +83,5 @@ fun BackupScreen(state: BackupState, onSave: (android.net.Uri, String) -> Unit, 
                 BackupState.Idle -> Unit
             }
         }
+    }
 }

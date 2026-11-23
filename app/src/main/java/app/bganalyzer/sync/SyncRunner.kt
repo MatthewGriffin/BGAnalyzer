@@ -6,6 +6,8 @@ import app.bganalyzer.rest.RestAuth
 import app.bganalyzer.rest.RestSyncSource
 import app.bganalyzer.settings.ConnectionStore
 import app.bganalyzer.settings.RestStore
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Runs one sync from whichever source is chosen. Shared by the Sync button and the background sync. Blocks: call off the main thread. */
 class SyncRunner(private val context: Context) {
@@ -16,7 +18,9 @@ class SyncRunner(private val context: Context) {
     val hasConnection: Boolean
         get() = if (rest.source == RestStore.SOURCE_REST) rest.url.isNotBlank() else store.uri.isNotBlank() && store.database.isNotBlank()
 
-    suspend fun run(days: Int, onProgress: (Int) -> Unit = {}): SyncResult {
+    suspend fun run(days: Int, onProgress: (Int) -> Unit = {}): SyncResult = lock.withLock { runLocked(days, onProgress) }
+
+    private suspend fun runLocked(days: Int, onProgress: (Int) -> Unit): SyncResult {
         val db = AppDatabase.get(context)
         val now = System.currentTimeMillis()
         // Every few days also look for holes anywhere in the period, not only the last week.
@@ -33,5 +37,9 @@ class SyncRunner(private val context: Context) {
         return result
     }
 
-    private companion object { const val KEY_DEEP = "last_deep_gap_check" }
+    private companion object {
+        const val KEY_DEEP = "last_deep_gap_check"
+        /** The button and the background sync never run at the same time. */
+        val lock = Mutex()
+    }
 }
