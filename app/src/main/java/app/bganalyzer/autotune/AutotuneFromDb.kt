@@ -1,5 +1,6 @@
 package app.bganalyzer.autotune
 
+import app.bganalyzer.data.zone
 import app.bganalyzer.data.AppDatabase
 import app.bganalyzer.domain.BasalTimeline
 import app.bganalyzer.domain.ProfileChanges
@@ -18,7 +19,7 @@ object AutotuneFromDb {
     private const val DAY_MS = 24 * HOUR_MS
 
     suspend fun run(db: AppDatabase, days: Int, peakMinutes: Int, now: Long, progress: (Int, Int) -> Unit = { _, _ -> }): Outcome {
-        val zone = db.profileDao().latest()?.timezone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
+        val zone = db.profileDao().zone()
         val end = AutotuneRun.defaultEnd(now, zone)
         val from = end - days * DAY_MS
         val lookback = 16L * HOUR_MS

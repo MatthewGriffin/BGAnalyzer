@@ -12,6 +12,12 @@ interface ProfileDao {
     @Query("SELECT * FROM profiles ORDER BY startMs")
     suspend fun all(): List<ProfileEntity>
 
+    @Query("SELECT timezone FROM profiles ORDER BY startMs DESC LIMIT 50")
+    suspend fun recentTimezones(): List<String?>
+
     @Query("SELECT * FROM profiles ORDER BY startMs DESC LIMIT 1")
     suspend fun latest(): ProfileEntity?
 }
+
+/** The zone days and hours are cut in; see [app.bganalyzer.domain.ZoneResolver]. */
+suspend fun ProfileDao.zone(): java.time.ZoneId = app.bganalyzer.domain.ZoneResolver.resolve(recentTimezones())

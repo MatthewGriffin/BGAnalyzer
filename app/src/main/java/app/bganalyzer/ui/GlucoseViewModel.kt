@@ -1,5 +1,7 @@
 package app.bganalyzer.ui
 
+import app.bganalyzer.sync.SyncRunner
+import app.bganalyzer.data.zone
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -109,8 +111,7 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
                 val meals = PostMeal.meals(treatments)
                 val profiles = db.profileDao().all()
                 val entries = ProfileTimeline.entries(profileEvents)
-                val zone = profiles.lastOrNull()?.timezone?.let { runCatching { java.time.ZoneId.of(it) }.getOrNull() }
-                    ?: java.time.ZoneId.systemDefault()
+                val zone = db.profileDao().zone()
                 GlucoseUiState(
                     d, rows, TimeInRange.of(rows.map { it.mgdl }), from, to, u, treatments,
                     mealCount = meals.size,
@@ -167,14 +168,7 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             _sync.value = try {
                 val progress = { n: Int -> _sync.value = SyncState.Running(n) }
-                val result = if (useRest) {
-                    val auth = when (rest.authType) {
-                        RestStore.AUTH_TOKEN -> RestAuth.Token(rest.secret)
-                        RestStore.AUTH_SECRET -> RestAuth.ApiSecret(rest.secret)
-                        else -> RestAuth.None
-                    }
-                    RestSyncSource(rest.url, auth).use { NightscoutSync(db).run(it, days, progress) }
-                } else NightscoutSync(db).run(uri, database, days, progress)
+                val result = SyncRunner(getApplication()).run(days, progress)
                 // The window moves with the clock, so refresh it after new data arrives.
                 refresh.update { it + 1 }
                 SyncState.Done(result.glucoseFetched, result.treatmentsFetched, result.profilesFetched, result.iobFetched, result.spans)

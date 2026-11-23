@@ -1,5 +1,6 @@
 package app.bganalyzer.ui
 
+import app.bganalyzer.data.zone
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -85,7 +86,7 @@ class AutotuneViewModel(app: Application) : AndroidViewModel(app) {
     val dayQuality: StateFlow<DayQualityState> = combine(_days, db.excludedDayDao().observeAll(), refresh) { d, excluded, _ ->
         val to = System.currentTimeMillis()
         val from = to - d * DAY_MS
-        val zone = db.profileDao().latest()?.timezone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
+        val zone = db.profileDao().zone()
         val dates = excluded.map { it.date }.toSet()
         val noInsulin = DayQuality.daysWithoutInsulin(
             db.treatmentDao().validBetween(from - 12 * HOUR_MS, to), db.glucoseReadingDao().between(from, to).map { it.timestampMs }, zone, from, to, to,

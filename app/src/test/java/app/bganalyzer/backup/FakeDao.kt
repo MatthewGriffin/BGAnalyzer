@@ -36,6 +36,7 @@ class FakeProfileDao(initial: List<app.bganalyzer.data.ProfileEntity> = emptyLis
     override suspend fun upsertAll(profiles: List<app.bganalyzer.data.ProfileEntity>) { profiles.forEach { rows[it.id] = it } }
     override suspend fun all() = rows.values.sortedBy { it.startMs }
     override suspend fun latest() = rows.values.maxByOrNull { it.startMs }
+    override suspend fun recentTimezones() = rows.values.sortedByDescending { it.startMs }.map { it.timezone }
 }
 
 class FakeIobDao(initial: List<app.bganalyzer.data.IobSampleEntity> = emptyList()) : app.bganalyzer.data.IobDao {

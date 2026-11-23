@@ -35,6 +35,8 @@ object SyncPlanner {
     /** Treatments are edited and invalidated later, so look back further than for glucose. */
     const val TREATMENT_TAIL_MS = DAY_MS
     const val RECHECK_RECENT_MS = 7 * DAY_MS
+    /** A deep check looks for holes anywhere in the period; it runs every few days so a hole older than a week is not trusted forever. */
+    const val DEEP_CHECK_EVERY_MS = 3 * DAY_MS
     const val GLUCOSE_GAP_MS = 15L * 60 * 1000
     const val IOB_GAP_MS = 60L * 60 * 1000
     /** Spans closer together than this are asked for as one. */
@@ -52,11 +54,11 @@ object SyncPlanner {
     fun period(nowMs: Long, days: Int) = Span(nowMs - days * DAY_MS, nowMs)
 
     /** Holes in sorted [timestamps] that are longer than [minGapMs], ended within the recheck window, and touch [period]. */
-    fun recentGaps(timestamps: List<Long>, period: Span, nowMs: Long, minGapMs: Long): List<Span> {
+    fun recentGaps(timestamps: List<Long>, period: Span, nowMs: Long, minGapMs: Long, lookbackMs: Long = RECHECK_RECENT_MS): List<Span> {
         val out = ArrayList<Span>()
         for (i in 1 until timestamps.size) {
             val a = timestamps[i - 1]; val b = timestamps[i]
-            if (b - a > minGapMs && b >= nowMs - RECHECK_RECENT_MS) Intervals.clamp(Span(a, b), period)?.let(out::add)
+            if (b - a > minGapMs && b >= nowMs - lookbackMs) Intervals.clamp(Span(a, b), period)?.let(out::add)
         }
         return out
     }
