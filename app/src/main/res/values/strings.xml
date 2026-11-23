@@ -209,4 +209,24 @@
     <string name="autotune_row_cr">Carb ratio (g per U)</string>
     <string name="autotune_since_change">Only days run on your current profile are used: it last changed on %1$s. Days before that are skipped, so applying a result and re-running does not move the values on again from old data.</string>
     <string name="autotune_syncing">Syncing the latest data first. Run autotune when it finishes.</string>
+    <string name="sync_status_hint">Syncs on open. Only missing or recent data is requested.</string>
+    <string name="tir_in_range_caption">in range (%1$s–%2$s %3$s)</string>
+    <string name="tir_short_very_low">Very low</string>
+    <string name="tir_short_low">Low</string>
+    <string name="tir_short_high">High</string>
+    <string name="tir_short_very_high">Very high</string>
+    <string name="tir_bands_note">Very low below %1$s, low below %2$s, high above %3$s, very high above %4$s</string>
+    <string name="tile_average">average %1$s</string>
+    <string name="tile_swing">swing %1$s/h</string>
+    <string name="tile_cv">CV</string>
+    <string name="tile_meals">meals</string>
+    <string name="tile_carbs_day">g carbs/day</string>
+    <string name="tile_bolus_day">U bolus/day</string>
+    <string name="treat_bolus_note">Bolus includes automatic micro-boluses, not basal.</string>
+    <string name="autotune_result_title">Result</string>
+    <string name="autotune_col_conf_short">Conf.</string>
+    <string name="autotune_conf_legend">Confidence: green high, amber medium, red low.</string>
+    <string name="patterns_short_in_range">In range</string>
+    <string name="patterns_fact_average">Average</string>
+    <string name="patterns_fact_swing">Swing</string>
 </resources>

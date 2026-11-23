@@ -86,15 +86,20 @@ private fun hourLabel(h: Int) = String.format(Locale.US, "%02d:00", h % 24)
 @Composable
 private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClear: () -> Unit) {
     val a: AutotuneAdvice = s.advice
-    Text(stringResource(R.string.autotune_days_used, a.daysTuned, s.days), style = MaterialTheme.typography.bodySmall)
-    a.swingMgdlPerHour?.let { sw -> a.cvPct?.let { cv -> Text(stringResource(R.string.stability_overall, unit.format(sw), unit.label, String.format(Locale.getDefault(), "%.0f", cv)), style = MaterialTheme.typography.bodySmall) } }
-    s.profileChangeMs?.let {
-        val whenText = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(it))
-        Text(stringResource(R.string.autotune_since_change, whenText), style = MaterialTheme.typography.bodySmall)
-    }
-    if (s.result.skipped.isNotEmpty()) {
-        Column {
-            Text(stringResource(R.string.autotune_skipped), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
+    SectionCard(stringResource(R.string.autotune_result_title)) {
+        Text(stringResource(R.string.autotune_days_used, a.daysTuned, s.days), style = MaterialTheme.typography.bodyMedium)
+        a.swingMgdlPerHour?.let { sw -> a.cvPct?.let { cv ->
+            TileRow {
+                StatTile(unit.format(sw), stringResource(R.string.tile_swing, unit.label))
+                StatTile(String.format(Locale.getDefault(), "%.0f%%", cv), stringResource(R.string.tile_cv))
+            }
+        } }
+        s.profileChangeMs?.let {
+            val whenText = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(it))
+            Text(stringResource(R.string.autotune_since_change, whenText), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (s.result.skipped.isNotEmpty()) {
+            GroupLabel(stringResource(R.string.autotune_skipped))
             SkippedSummary.lines(s.result.skipped).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary) }
         }
     }
@@ -102,9 +107,8 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
     // Insulin sensitivity and carb ratio
     val lowCr = a.mealsUsed < AutotuneAdvisor.MIN_MEALS
     val lowIsf = a.isfPoints < AutotuneAdvisor.MIN_ISF_POINTS
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp)) {
-            Text(stringResource(R.string.autotune_isf_cr), style = MaterialTheme.typography.titleSmall)
+    SectionCard(stringResource(R.string.autotune_isf_cr)) {
+        Column {
             val w = listOf(2.2f, 1f, 1f)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             TableRow(listOf("", stringResource(R.string.autotune_col_now), stringResource(R.string.autotune_col_suggested)), w, header = true)
@@ -126,13 +130,20 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
     }
 
     // Basal by hour
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp)) {
-            Text(stringResource(R.string.autotune_basal), style = MaterialTheme.typography.titleSmall)
-            val w = listOf(1f, 1f, 1.2f, 1f, 1.1f)
+    SectionCard(stringResource(R.string.autotune_basal)) {
+        Column {
+            val hoursSorted = a.hours.sortedBy { it.hour }
+            if (hoursSorted.size == 24) {
+                BasalStepChart(hoursSorted.map { it.current }, hoursSorted.map { AutotuneAdvisor.roundToPumpStep(it.suggested) })
+                Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Dot(MaterialTheme.colorScheme.outline); Text(stringResource(R.string.autotune_col_now), style = MaterialTheme.typography.labelSmall) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Dot(MaterialTheme.colorScheme.primary); Text(stringResource(R.string.autotune_col_suggested), style = MaterialTheme.typography.labelSmall) }
+                }
+            }
+            val w = listOf(1f, 1f, 1.2f, 1f, 0.6f)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             TableRow(
-                listOf(stringResource(R.string.autotune_col_time), stringResource(R.string.autotune_col_now), stringResource(R.string.autotune_col_suggested), stringResource(R.string.autotune_col_change), stringResource(R.string.autotune_col_confidence)),
+                listOf(stringResource(R.string.autotune_col_time), stringResource(R.string.autotune_col_now), stringResource(R.string.autotune_col_suggested), stringResource(R.string.autotune_col_change), stringResource(R.string.autotune_col_conf_short)),
                 w, header = true,
             )
             a.hours.forEach { h ->
@@ -141,7 +152,7 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
                 val sug = AutotuneAdvisor.roundToPumpStep(h.suggested)
                 val change = if (now > 0) (sug / now - 1) * 100 else 0.0
                 TableRow(
-                    listOf(hourLabel(h.hour), rate(now), rate(sug), String.format(Locale.getDefault(), "%+.0f%%", change), h.confidence.name.lowercase()), w,
+                    listOf(hourLabel(h.hour), rate(now), rate(sug), String.format(Locale.getDefault(), "%+.0f%%", change), "●"), w,
                     colours = listOf(null, null, null, null, confidenceColor(h.confidence)),
                     note = listOfNotNull(
                         h.heldReason?.let { stringResource(R.string.autotune_held, rate(AutotuneAdvisor.roundToPumpStep(h.tuned)), it) },
@@ -152,6 +163,7 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
             val totalNow = a.hours.sumOf { it.current }
             val totalSug = a.hours.sumOf { AutotuneAdvisor.roundToPumpStep(it.suggested) }
             TableRow(listOf(stringResource(R.string.autotune_total), rate(totalNow), rate(totalSug), String.format(Locale.getDefault(), "%+.0f%%", if (totalNow > 0) (totalSug / totalNow - 1) * 100 else 0.0), ""), w, header = true)
+            Text(stringResource(R.string.autotune_conf_legend), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
             Text(stringResource(R.string.autotune_basal_note), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
         }
     }

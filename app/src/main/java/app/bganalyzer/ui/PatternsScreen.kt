@@ -101,8 +101,8 @@ private fun pct(v: Double) = String.format(Locale.getDefault(), "%.0f", v)
 /** One time of day: glucose, the loop's basal against the profile, and glucose after meals, in one card. */
 @Composable
 private fun TimeBlockCard(g: BlockStats, basal: BasalBlockStats?, meal: MealBlockStats?, unit: GlucoseUnit) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    SectionCard(null) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(stringResource(R.string.patterns_block_time, hour(g.startHour), hour(g.endHour)), style = MaterialTheme.typography.titleMedium)
             Section(stringResource(R.string.patterns_glucose_title)) { GlucoseLines(g, unit) }
             basal?.let { Section(stringResource(R.string.basal_title)) { BasalBlockLines(it) } }
@@ -124,12 +124,15 @@ private fun GlucoseLines(b: BlockStats, unit: GlucoseUnit) {
         return
     }
     val tir = b.timeInRange
-    Text(stringResource(R.string.patterns_days, b.days), style = MaterialTheme.typography.bodySmall)
-    Text(stringResource(R.string.patterns_in_range, pct(tir.inRangePct)), color = glucoseColor(GlucoseBand.IN_RANGE))
-    Text(stringResource(R.string.patterns_below, pct(tir.lowPct + tir.veryLowPct)), color = glucoseColor(GlucoseBand.LOW))
-    Text(stringResource(R.string.patterns_above, pct(tir.highPct + tir.veryHighPct)), color = glucoseColor(GlucoseBand.HIGH))
-    Text(stringResource(R.string.patterns_average, unit.format(tir.meanMgdl), unit.label))
-    StabilityLine(b.swingMgdlPerHour, tir.cvPct, unit)
+    Text(stringResource(R.string.patterns_days, b.days), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    RangeBar(tir, Modifier.padding(vertical = 4.dp))
+    Row(Modifier.fillMaxWidth()) {
+        RangeLegend(stringResource(R.string.tir_short_low), tir.lowPct + tir.veryLowPct, glucoseColor(GlucoseBand.LOW))
+        RangeLegend(stringResource(R.string.patterns_short_in_range), tir.inRangePct, glucoseColor(GlucoseBand.IN_RANGE))
+        RangeLegend(stringResource(R.string.tir_short_high), tir.highPct + tir.veryHighPct, glucoseColor(GlucoseBand.HIGH))
+    }
+    FactRow(stringResource(R.string.patterns_fact_average), unit.format(tir.meanMgdl) + " " + unit.label)
+    b.swingMgdlPerHour?.let { FactRow(stringResource(R.string.patterns_fact_swing), unit.format(it) + " " + unit.label + "/h  ·  CV " + pct(tir.cvPct) + "%") }
     if (b.lowDays > 0) Text(stringResource(R.string.patterns_low_days, b.lowDays, b.days), color = glucoseColor(GlucoseBand.LOW))
     if (b.veryLowDays > 0) Text(stringResource(R.string.patterns_very_low_days, b.veryLowDays, b.days), color = glucoseColor(GlucoseBand.VERY_LOW))
 }
@@ -182,8 +185,8 @@ private fun BasalHeader(b: BasalComparisonResult) {
 @Composable
 private fun OverallBasalCard(b: BasalComparisonResult) {
     val o = b.overall
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    SectionCard(null) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(stringResource(R.string.basal_overall), style = MaterialTheme.typography.titleMedium)
             if (!o.enoughDays) {
                 Text(stringResource(R.string.patterns_not_enough, o.days, TimeBlocks.MIN_DAYS))
@@ -240,8 +243,8 @@ private fun ChangesTimeline(state: PatternsState, unit: GlucoseUnit) {
     }
     Text(stringResource(R.string.timeline_intro), style = MaterialTheme.typography.bodySmall)
     entries.take(15).forEach { e ->
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        SectionCard(null) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(fmt.format(java.util.Date(e.timeMs)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 Text(e.label, style = MaterialTheme.typography.titleSmall)
                 e.basalBefore?.let { Text(stringResource(R.string.changes_basal, rate(it), rate(e.basalAfter ?: it)), style = MaterialTheme.typography.bodySmall) }
@@ -290,8 +293,8 @@ private fun ProfileHistorySection(history: List<app.bganalyzer.domain.ProfileCon
     Text(stringResource(R.string.history_intro), style = MaterialTheme.typography.bodySmall)
     history.forEachIndexed { i, c ->
         var open by androidx.compose.runtime.saveable.rememberSaveable(c.profile.startMs) { androidx.compose.runtime.mutableStateOf(false) }
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        SectionCard(null) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     fmt.format(java.util.Date(c.profile.startMs)) + " – " + (c.endMs?.let { fmt.format(java.util.Date(it)) } ?: stringResource(R.string.history_now)),
                     style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,

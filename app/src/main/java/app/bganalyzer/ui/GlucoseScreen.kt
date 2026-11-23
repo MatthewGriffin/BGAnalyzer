@@ -53,25 +53,24 @@ fun GlucoseScreen(
     val unit = state.unit
     ScreenScaffold(stringResource(R.string.glucose_title)) {
             if (!hasConnection) Text(stringResource(R.string.sync_need_connection))
-            Button(onClick = onSync, enabled = hasConnection && sync !is SyncState.Running) {
-                Text(stringResource(R.string.sync_button))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f)) {
+                    when (sync) {
+                        is SyncState.Running -> Text(stringResource(R.string.sync_running, sync.stored), style = MaterialTheme.typography.bodySmall)
+                        is SyncState.Failed -> Text(stringResource(R.string.sync_failed), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall)
+                        else -> Text(stringResource(R.string.sync_status_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                androidx.compose.material3.FilledTonalButton(onClick = onSync, enabled = hasConnection && sync !is SyncState.Running) {
+                    Text(stringResource(R.string.sync_button))
+                }
             }
+            if (sync is SyncState.Running) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (sync is SyncState.Failed) Text(sync.message)
             if (hasConnection && state.unsyncedMs > 60 * 60 * 1000L && sync !is SyncState.Running) {
-                Text(stringResource(R.string.sync_unsynced_notice), color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.sync_unsynced_notice), color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
             }
             EmptyDaysNotice(state.emptyDays)
-            when (sync) {
-                is SyncState.Running -> {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text(stringResource(R.string.sync_running, sync.stored))
-                }
-                is SyncState.Done -> Text(stringResource(R.string.sync_done, sync.glucose, sync.treatments, sync.iob, sync.spans), style = MaterialTheme.typography.bodySmall)
-                is SyncState.Failed -> {
-                    Text(stringResource(R.string.sync_failed), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall)
-                    Text(sync.message)
-                }
-                SyncState.Idle -> Unit
-            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Dropdown(
@@ -107,16 +106,27 @@ fun GlucoseScreen(
                 GlucoseCharts(state, ranges)
                 val tir = state.timeInRange
                 val coverage = coveragePercent(tir.count, state.toMs - state.fromMs)
-                Text(stringResource(R.string.tir_title), style = MaterialTheme.typography.titleMedium)
-                TirRow(stringResource(R.string.tir_in_range, unit.format(ranges.lowBelow), unit.format(ranges.highAbove)), tir.inRangePct, glucoseColor(GlucoseBand.IN_RANGE))
-                TirRow(stringResource(R.string.tir_high, unit.format(ranges.highAbove), unit.format(ranges.veryHighAbove)), tir.highPct, glucoseColor(GlucoseBand.HIGH))
-                TirRow(stringResource(R.string.tir_very_high, unit.format(ranges.veryHighAbove)), tir.veryHighPct, glucoseColor(GlucoseBand.VERY_HIGH))
-                TirRow(stringResource(R.string.tir_low, unit.format(ranges.veryLowBelow), unit.format(ranges.lowBelow)), tir.lowPct, glucoseColor(GlucoseBand.LOW))
-                TirRow(stringResource(R.string.tir_very_low, unit.format(ranges.veryLowBelow)), tir.veryLowPct, glucoseColor(GlucoseBand.VERY_LOW))
-                Text(stringResource(R.string.stat_average, unit.format(tir.meanMgdl), unit.label))
+                SectionCard(stringResource(R.string.tir_title)) {
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(String.format(Locale.getDefault(), "%.0f%%", tir.inRangePct), style = MaterialTheme.typography.displaySmall, color = glucoseColor(GlucoseBand.IN_RANGE))
+                        Text(stringResource(R.string.tir_in_range_caption, unit.format(ranges.lowBelow), unit.format(ranges.highAbove), unit.label), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
+                    }
+                    RangeBar(tir)
+                    Row(Modifier.fillMaxWidth()) {
+                        RangeLegend(stringResource(R.string.tir_short_very_low), tir.veryLowPct, glucoseColor(GlucoseBand.VERY_LOW))
+                        RangeLegend(stringResource(R.string.tir_short_low), tir.lowPct, glucoseColor(GlucoseBand.LOW))
+                        RangeLegend(stringResource(R.string.tir_short_high), tir.highPct, glucoseColor(GlucoseBand.HIGH))
+                        RangeLegend(stringResource(R.string.tir_short_very_high), tir.veryHighPct, glucoseColor(GlucoseBand.VERY_HIGH))
+                    }
+                    Text(stringResource(R.string.tir_bands_note, unit.format(ranges.veryLowBelow), unit.format(ranges.lowBelow), unit.format(ranges.highAbove), unit.format(ranges.veryHighAbove)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 val swing = androidx.compose.runtime.remember(state.points) { app.bganalyzer.domain.Swing.of(state.points).perHour }
-                StabilityLine(swing, tir.cvPct, unit)
-                Text(stringResource(R.string.stat_readings, tir.count, coverage), style = MaterialTheme.typography.bodySmall)
+                TileRow {
+                    StatTile(unit.format(tir.meanMgdl), stringResource(R.string.tile_average, unit.label))
+                    if (swing != null) StatTile(unit.format(swing), stringResource(R.string.tile_swing, unit.label))
+                    StatTile(String.format(Locale.getDefault(), "%.0f%%", tir.cvPct), stringResource(R.string.tile_cv))
+                }
+                Text(stringResource(R.string.stat_readings, tir.count, coverage), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (coverage < 70) {
                     Text(stringResource(R.string.stat_low_coverage), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
@@ -127,37 +137,25 @@ fun GlucoseScreen(
 
 @Composable
 private fun TreatmentsSection(state: GlucoseUiState) {
-    Text(stringResource(R.string.treat_title), style = MaterialTheme.typography.titleMedium)
-    if (state.treatments.isEmpty()) {
-        Text(stringResource(R.string.treat_none))
-        return
+    SectionCard(stringResource(R.string.treat_title)) {
+        if (state.treatments.isEmpty()) {
+            Text(stringResource(R.string.treat_none), style = MaterialTheme.typography.bodyMedium)
+            return@SectionCard
+        }
+        val days = state.days.toDouble()
+        fun one(v: Double) = String.format(Locale.getDefault(), "%.1f", v)
+        TileRow {
+            StatTile(state.mealCount.toString(), stringResource(R.string.tile_meals))
+            StatTile(one(state.carbsTotal / days), stringResource(R.string.tile_carbs_day))
+            StatTile(one(state.bolusInsulinTotal / days), stringResource(R.string.tile_bolus_day))
+        }
+        Text(stringResource(R.string.treat_bolus_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    val days = state.days.toDouble()
-    fun one(v: Double) = String.format(Locale.getDefault(), "%.1f", v)
-    Text(stringResource(R.string.treat_meals, state.mealCount, one(state.carbsTotal / days)))
-    Text(stringResource(R.string.treat_insulin, one(state.bolusInsulinTotal), one(state.bolusInsulinTotal / days)))
 }
 
 @Composable
 private fun periodText(days: Int) =
     if (days == 1) stringResource(R.string.range_one_day) else stringResource(R.string.range_days, days)
-
-@Composable
-private fun TirRow(label: String, percent: Double, color: Color) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label)
-            Text(stringResource(R.string.tir_percent, String.format(Locale.getDefault(), "%.1f", percent)))
-        }
-        LinearProgressIndicator(
-            progress = { (percent / 100).toFloat() },
-            color = color,
-            gapSize = 0.dp,
-            drawStopIndicator = {},
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
 
 /** A choice between options is always a dropdown in this app. */
 @OptIn(ExperimentalMaterial3Api::class)
