@@ -58,9 +58,12 @@ fun ConnectionScreen(
     onDatabaseChange: (String) -> Unit,
     onTest: () -> Unit,
     rest: RestUi = RestUi(),
+    backgroundSync: Boolean = true,
+    onBackgroundSync: (Boolean) -> Unit = {},
 ) {
     ScreenScaffold(stringResource(R.string.connection_title)) {
-            Text(stringResource(R.string.connection_intro))
+        SectionCard(stringResource(R.string.connection_card_source)) {
+            Text(stringResource(R.string.connection_intro), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Dropdown(
                 label = stringResource(R.string.source_label),
                 options = listOf("mongo", "rest"),
@@ -126,12 +129,12 @@ fun ConnectionScreen(
                 Text(stringResource(if (testState == TestState.Running) R.string.connection_testing else R.string.connection_test_button))
             }
             }
+        }
             when (testState) {
-                is TestState.Ok -> {
+                is TestState.Ok -> SectionCard(stringResource(R.string.connection_ok_title, testState.report.database)) {
                     val report = testState.report
-                    Text(stringResource(R.string.connection_ok_title, report.database), style = MaterialTheme.typography.titleMedium)
                     report.collectionCounts.forEach { (name, count) ->
-                        Text(stringResource(R.string.connection_ok_count, name, count))
+                        FactRow(name, count.toString())
                     }
                     val newest = report.newestEntryMs
                     if (newest == null) {
@@ -141,7 +144,7 @@ fun ConnectionScreen(
                         Text(stringResource(R.string.connection_ok_newest, time))
                     }
                 }
-                is TestState.Failed -> {
+                is TestState.Failed -> SectionCard(null) {
                     Text(
                         stringResource(R.string.connection_failed_title),
                         style = MaterialTheme.typography.titleMedium,
@@ -151,10 +154,16 @@ fun ConnectionScreen(
                 }
                 TestState.Idle, TestState.Running -> Unit
             }
-            Text(
-                stringResource(R.string.connection_stored_count, storedReadingCount),
-                style = MaterialTheme.typography.bodySmall,
-            )
+            SectionCard(stringResource(R.string.connection_card_data)) {
+                TileRow { StatTile(String.format(java.util.Locale.getDefault(), "%,d", storedReadingCount), stringResource(R.string.connection_stored_caption)) }
+                androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text(stringResource(R.string.background_sync_title), style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(R.string.background_sync_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    androidx.compose.material3.Switch(checked = backgroundSync, onCheckedChange = onBackgroundSync)
+                }
+            }
         }
 }
 

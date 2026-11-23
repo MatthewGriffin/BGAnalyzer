@@ -267,6 +267,7 @@ private data class TimelineEntry(
 private fun PeriodLine(label: String, p: app.bganalyzer.domain.PeriodSummary) {
     val t = p.timeInRange
     val green = glucoseColor(GlucoseBand.IN_RANGE); val red = glucoseColor(GlucoseBand.LOW); val orange = glucoseColor(GlucoseBand.HIGH)
+    RangeBar(t, Modifier.padding(top = 4.dp))
     val head = stringResource(R.string.changes_line_head, label, String.format(Locale.getDefault(), "%.1f", p.days))
     val inRange = stringResource(R.string.changes_in_range, pct(t.inRangePct))
     val below = stringResource(R.string.changes_below, pct(t.lowPct + t.veryLowPct))

@@ -21,6 +21,8 @@ data class HourAdvice(
     val swingMgdlPerHour: Double? = null,
     /** Glucose swings much more in this hour than in a typical hour, so its confidence was lowered one step. */
     val unsteady: Boolean = false,
+    /** Autotune hit the largest change a run may make here (the autosens limits), so the true need may be further out. */
+    val limited: Boolean = false,
 )
 
 data class AutotuneAdvice(
@@ -63,7 +65,7 @@ object AutotuneAdvisor {
      * went low in that hour on at least [LOW_DAY_SHARE] of days or went very low (below 54) at all. Decreases are never held.
      * [readings] are the readings of the tuned days (excluded days already removed).
      */
-    fun advise(result: AutotuneResult, readings: List<AtReading>, zone: ZoneId): AutotuneAdvice {
+    fun advise(result: AutotuneResult, readings: List<AtReading>, zone: ZoneId, limits: AutotuneLimits = AutotuneLimits()): AutotuneAdvice {
         val perHour = Array(24) { HashMap<java.time.LocalDate, Boolean>() } // date -> had a low
         val veryLow = BooleanArray(24)
         for (r in readings) {
@@ -101,7 +103,8 @@ object AutotuneAdvisor {
             val swing = swings[h]
             val unsteady = swing != null && typical != null && swing > UNSTEADY_RATIO * typical && swing >= UNSTEADY_FLOOR_MGDL_PER_H
             val finalConf = if (!unsteady) conf else when (conf) { Confidence.HIGH -> Confidence.MEDIUM; else -> Confidence.LOW }
-            HourAdvice(h, cur, new, if (held != null) cur else new, held, finalConf, swing, unsteady)
+            val limited = cur > 0 && (new >= cur * limits.autosensMax - 1e-6 || new <= cur * limits.autosensMin + 1e-6)
+            HourAdvice(h, cur, new, if (held != null) cur else new, held, finalConf, swing, unsteady, limited)
         }
         return AutotuneAdvice(
             hours, result.original.isf, result.tuned.isf, result.original.ic, result.tuned.ic, result.daysTuned, result.mealsUsed, result.isfPoints,

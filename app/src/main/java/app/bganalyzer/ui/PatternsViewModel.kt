@@ -1,5 +1,6 @@
 package app.bganalyzer.ui
 
+import app.bganalyzer.data.zone
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -75,8 +76,7 @@ class PatternsViewModel(app: Application) : AndroidViewModel(app) {
                     val (coverage, excluded) = covEx
                     val to = System.currentTimeMillis()
                     val from = to - d * DAY_MS
-                    val zone = db.profileDao().latest()?.timezone?.let { runCatching { ZoneId.of(it) }.getOrNull() }
-                        ?: ZoneId.systemDefault()
+                    val zone = db.profileDao().zone()
                     val allReadings = db.glucoseReadingDao().between(from, to)
                     val excludedDates = excluded.map { it.date }.toSet()
                     val readings = ExcludedDays.readings(allReadings, zone, excludedDates)

@@ -1,5 +1,6 @@
 package app.bganalyzer.ui
 
+import app.bganalyzer.data.zone
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -38,7 +39,7 @@ data class DayQualityState(val excluded: List<ExcludedDayEntity> = emptyList(), 
 sealed interface AutotuneState {
     data object Idle : AutotuneState
     data class Running(val day: Int, val of: Int) : AutotuneState
-    data class Done(val advice: AutotuneAdvice, val result: AutotuneResult, val days: Int, val profileChangeMs: Long? = null) : AutotuneState
+    data class Done(val advice: AutotuneAdvice, val result: AutotuneResult, val days: Int, val profileChangeMs: Long? = null, val usedFirst: java.time.LocalDate? = null, val usedLast: java.time.LocalDate? = null) : AutotuneState
     data class Failed(val message: String) : AutotuneState
 }
 
@@ -85,7 +86,7 @@ class AutotuneViewModel(app: Application) : AndroidViewModel(app) {
     val dayQuality: StateFlow<DayQualityState> = combine(_days, db.excludedDayDao().observeAll(), refresh) { d, excluded, _ ->
         val to = System.currentTimeMillis()
         val from = to - d * DAY_MS
-        val zone = db.profileDao().latest()?.timezone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
+        val zone = db.profileDao().zone()
         val dates = excluded.map { it.date }.toSet()
         val noInsulin = DayQuality.daysWithoutInsulin(
             db.treatmentDao().validBetween(from - 12 * HOUR_MS, to), db.glucoseReadingDao().between(from, to).map { it.timestampMs }, zone, from, to, to,
@@ -112,7 +113,7 @@ class AutotuneViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun compute(days: Int): AutotuneState =
         when (val r = AutotuneFromDb.run(db, days, _peak.value, System.currentTimeMillis()) { d, n -> _state.value = AutotuneState.Running(d, n) }) {
             is AutotuneFromDb.Outcome.Failed -> AutotuneState.Failed(r.message)
-            is AutotuneFromDb.Outcome.Done -> AutotuneState.Done(r.advice, r.result, days, r.profileChangeMs)
+            is AutotuneFromDb.Outcome.Done -> AutotuneState.Done(r.advice, r.result, days, r.profileChangeMs, r.usedFirst, r.usedLast)
         }
 
     companion object {

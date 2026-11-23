@@ -2,7 +2,7 @@
 
 Android app that reads glucose and insulin data from a Nightscout site (uploaded by AndroidAPS), shows how glucose behaves, and runs an AndroidAPS-style **Autotune** to suggest basal, insulin sensitivity and carb ratio values for a new profile. It gives advice only: it never changes a pump, a loop or a profile.
 
-> Not a medical device. Check any change with your diabetes care team before using it.
+> **Warning: you are responsible for any change you make to basal rates, insulin sensitivity, carb ratio or any other pump or loop setting.** BGAnalyzer is not a medical device and gives suggestions only, based on past data that may be incomplete or wrong. Check every change with your diabetes care team before using it. Use at your own risk, with no warranty (see `LICENSE`).
 
 ## What it does
 
@@ -10,6 +10,7 @@ Android app that reads glucose and insulin data from a Nightscout site (uploaded
 - **Autotune:** replays recent days (4 AM to 4 AM) against your insulin and carb records, with confidence per value, and lays the result out as tables ready to copy into a profile.
 - **Patterns:** trends only (glucose by time of day, post-meal rises, loop basal against profile, before/after profile changes). Days with bad data (for example a pump failure) can be excluded.
 - **Data sources:** the Nightscout MongoDB database directly, or the Nightscout REST API (read-only, incremental).
+- **Background sync:** every 3 hours when online (can be switched off on the Connection tab).
 - **Backup:** encrypted backup and restore of everything the app saves.
 
 ## Build

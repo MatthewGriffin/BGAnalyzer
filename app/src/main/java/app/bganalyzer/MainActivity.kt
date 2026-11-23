@@ -18,6 +18,8 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import app.bganalyzer.ui.BackupScreen
+import app.bganalyzer.sync.BackgroundSync
+import app.bganalyzer.ui.TabIcons
 import app.bganalyzer.ui.BackupViewModel
 import app.bganalyzer.ui.GlucoseScreen
 import app.bganalyzer.ui.PatternsScreen
@@ -55,6 +57,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        BackgroundSync.schedule(this)
         val readingCount = AppDatabase.get(this).glucoseReadingDao().observeCount()
         val store = ConnectionStore(this)
         val restStore = RestStore(this)
@@ -81,7 +84,7 @@ class MainActivity : ComponentActivity() {
                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     bottomBar = {
                         NavigationBar {
-                            listOf(R.string.tab_glucose, R.string.tab_autotune, R.string.tab_patterns, R.string.tab_connection, R.string.tab_backup).forEachIndexed { i, label ->
+                            listOf(R.string.tab_glucose, R.string.tab_autotune, R.string.tab_patterns, R.string.tab_connection, R.string.tab_backup).zip(listOf(TabIcons.Overview, TabIcons.Autotune, TabIcons.Patterns, TabIcons.Connection, TabIcons.Backup)).forEachIndexed { i, (label, glyph) ->
                                 NavigationBarItem(
                                     selected = tab == i,
                                     onClick = {
@@ -91,7 +94,7 @@ class MainActivity : ComponentActivity() {
                                         if (i == 1) { autotune.refresh(); glucose.syncIfStale(30) }
                                         if (i == 2) { patterns.refresh(); glucose.syncIfStale(patterns.state.value.days) }
                                     },
-                                    icon = {},
+                                    icon = { Icon(glyph, contentDescription = null) },
                                     // one line even at a large font size: five tabs share the width
                                     label = { Text(stringResource(label), maxLines = 1, softWrap = false, style = androidx.compose.material3.MaterialTheme.typography.labelSmall) },
                                     alwaysShowLabel = true,
@@ -136,7 +139,10 @@ class MainActivity : ComponentActivity() {
                         BackupScreen(backupState, onSave = backup::save, onRestore = backup::restore)
                     }
                 } else Box(Modifier.padding(inner)) {
+                var bgSync by remember { mutableStateOf(BackgroundSync.enabled(this@MainActivity)) }
                 ConnectionScreen(
+                    backgroundSync = bgSync,
+                    onBackgroundSync = { bgSync = it; BackgroundSync.setEnabled(this@MainActivity, it) },
                     uri = uri,
                     database = database,
                     testState = testState,

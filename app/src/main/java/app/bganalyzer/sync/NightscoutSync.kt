@@ -28,23 +28,25 @@ class NightscoutSync(private val db: AppDatabase, private val nowMs: () -> Long 
     }
 
     /** Blocks, so call it off the main thread. [days] is the period to make complete. [onProgress] gets the running number of stored records. */
-    suspend fun run(uri: String, database: String, days: Int, onProgress: (Int) -> Unit = {}): SyncResult =
-        MongoSyncSource(NightscoutMongo.open(uri), database).use { run(it, days, onProgress) }
+    suspend fun run(uri: String, database: String, days: Int, onProgress: (Int) -> Unit = {}, deepGapCheck: Boolean = false): SyncResult =
+        MongoSyncSource(NightscoutMongo.open(uri), database).use { run(it, days, onProgress, deepGapCheck) }
 
     /** The same sync from any [source] (MongoDB or the REST API). The source is not closed here. */
-    suspend fun run(source: SyncSource, days: Int, onProgress: (Int) -> Unit = {}): SyncResult {
+    suspend fun run(source: SyncSource, days: Int, onProgress: (Int) -> Unit = {}, deepGapCheck: Boolean = false): SyncResult {
         val now = nowMs()
         val period = SyncPlanner.period(now, days)
         Sources.LEGACY.forEach { db.coverageDao().clear(it) }
         seedGlucoseCoverage()
         var stored = 0
         val progress = { n: Int -> stored += n; onProgress(stored) }
-        val glucose = glucose(source, period, now, progress)
+        val glucose = glucose(source, period, now, progress, deepGapCheck)
         val treatments = treatments(source, period, now, progress)
-        val iob = iob(source, period, now, progress)
+        val iob = iob(source, period, now, progress, deepGapCheck)
         val profiles = profiles(source)
         return SyncResult(glucose.fetched, treatments.fetched, profiles, iob.fetched, glucose.spans + treatments.spans + iob.spans)
     }
+
+    private fun lookback(deep: Boolean, period: Span, now: Long) = if (deep) now - period.startMs else SyncPlanner.RECHECK_RECENT_MS
 
     private class Part(val fetched: Int, val spans: Int)
 
@@ -59,10 +61,10 @@ class NightscoutSync(private val db: AppDatabase, private val nowMs: () -> Long 
         replaceCoverage(GLUCOSE, SyncPlanner.coverageFromRuns(stamps, SyncPlanner.GLUCOSE_GAP_MS))
     }
 
-    private suspend fun glucose(source: SyncSource, period: Span, now: Long, progress: (Int) -> Unit): Part {
+    private suspend fun glucose(source: SyncSource, period: Span, now: Long, progress: (Int) -> Unit, deep: Boolean): Part {
         val dao = db.glucoseReadingDao()
         val covered = db.coverageDao().forSource(GLUCOSE).map { Span(it.startMs, it.endMs) }
-        val holes = SyncPlanner.recentGaps(dao.timestampsSince(period.startMs), period, now, SyncPlanner.GLUCOSE_GAP_MS)
+        val holes = SyncPlanner.recentGaps(dao.timestampsSince(period.startMs), period, now, SyncPlanner.GLUCOSE_GAP_MS, lookback(deep, period, now))
         val spans = SyncPlanner.spans(period, covered, holes, SyncPlanner.GLUCOSE_TAIL_MS, now)
         var fetched = 0
         for (chunk in SyncPlanner.chunks(spans)) {
@@ -97,10 +99,10 @@ class NightscoutSync(private val db: AppDatabase, private val nowMs: () -> Long 
         return batched(source.profileEventsBefore(period.startMs), TreatmentMapper::treatment, { dao.upsertAll(it) }, {})
     }
 
-    private suspend fun iob(source: SyncSource, period: Span, now: Long, progress: (Int) -> Unit): Part {
+    private suspend fun iob(source: SyncSource, period: Span, now: Long, progress: (Int) -> Unit, deep: Boolean): Part {
         val dao = db.iobDao()
         val covered = db.coverageDao().forSource(IOB).map { Span(it.startMs, it.endMs) }
-        val holes = SyncPlanner.recentGaps(dao.timestampsSince(period.startMs), period, now, SyncPlanner.IOB_GAP_MS)
+        val holes = SyncPlanner.recentGaps(dao.timestampsSince(period.startMs), period, now, SyncPlanner.IOB_GAP_MS, lookback(deep, period, now))
         val spans = SyncPlanner.spans(period, covered, holes, SyncPlanner.IOB_TAIL_MS, now)
         var fetched = 0
         for (chunk in SyncPlanner.chunks(spans)) {

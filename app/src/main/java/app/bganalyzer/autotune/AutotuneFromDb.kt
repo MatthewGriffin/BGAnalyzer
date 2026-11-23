@@ -1,5 +1,6 @@
 package app.bganalyzer.autotune
 
+import app.bganalyzer.data.zone
 import app.bganalyzer.data.AppDatabase
 import app.bganalyzer.domain.BasalTimeline
 import app.bganalyzer.domain.ProfileChanges
@@ -10,7 +11,7 @@ import java.time.ZoneId
 /** Reads the saved data and runs autotune over it: the part of an autotune run that is not screen code. */
 object AutotuneFromDb {
     sealed interface Outcome {
-        data class Done(val advice: AutotuneAdvice, val result: AutotuneResult, val profileChangeMs: Long? = null) : Outcome
+        data class Done(val advice: AutotuneAdvice, val result: AutotuneResult, val profileChangeMs: Long? = null, val usedFirst: java.time.LocalDate? = null, val usedLast: java.time.LocalDate? = null) : Outcome
         data class Failed(val message: String) : Outcome
     }
 
@@ -18,7 +19,7 @@ object AutotuneFromDb {
     private const val DAY_MS = 24 * HOUR_MS
 
     suspend fun run(db: AppDatabase, days: Int, peakMinutes: Int, now: Long, progress: (Int, Int) -> Unit = { _, _ -> }): Outcome {
-        val zone = db.profileDao().latest()?.timezone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
+        val zone = db.profileDao().zone()
         val end = AutotuneRun.defaultEnd(now, zone)
         val from = end - days * DAY_MS
         val lookback = 16L * HOUR_MS
@@ -66,6 +67,8 @@ object AutotuneFromDb {
         // the low-glucose guard looks only at the days that were used, not at skipped (no insulin, excluded) days
         val skippedDates = result.skipped.map { it.date }.toSet()
         val usedReadings = readings.filter { java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(it.timeMs - AutotuneRun.START_HOUR * HOUR_MS), zone).toString() !in skippedDates }
-        return Outcome.Done(AutotuneAdvisor.advise(result, usedReadings, zone), result, change?.startMs)
+        val endDate = java.time.LocalDate.ofInstant(java.time.Instant.ofEpochMilli(end), zone)
+        val usedDates = (days downTo 1).map { endDate.minusDays(it.toLong()) }.filter { it.toString() !in skippedDates }
+        return Outcome.Done(AutotuneAdvisor.advise(result, usedReadings, zone), result, change?.startMs, usedDates.firstOrNull(), usedDates.lastOrNull())
     }
 }

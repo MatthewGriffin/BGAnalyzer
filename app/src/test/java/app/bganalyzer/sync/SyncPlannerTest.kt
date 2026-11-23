@@ -89,6 +89,17 @@ class SyncPlannerTest {
     }
 
     @Test
+    fun deepCheckAlsoFindsOldHoles() {
+        val period = SyncPlanner.period(now, 30)
+        val stamps = listOf(now - 20 * day, now - 20 * day + 5 * min, now - 20 * day + 2 * hour)
+        assertTrue(SyncPlanner.recentGaps(stamps, period, now, SyncPlanner.GLUCOSE_GAP_MS).isEmpty())
+        assertEquals(
+            listOf(Span(now - 20 * day + 5 * min, now - 20 * day + 2 * hour)),
+            SyncPlanner.recentGaps(stamps, period, now, SyncPlanner.GLUCOSE_GAP_MS, now - period.startMs),
+        )
+    }
+
+    @Test
     fun recentHolesOutsideThePeriodAreIgnoredAndOthersClamped() {
         val period = SyncPlanner.period(now, 1)
         val stamps = listOf(now - 3 * day, now - 3 * day + 2 * hour, now - day - hour, now - day + hour)
