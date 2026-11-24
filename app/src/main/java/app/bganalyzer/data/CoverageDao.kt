@@ -13,6 +13,9 @@ interface CoverageDao {
     @Query("SELECT * FROM sync_coverage ORDER BY source, startMs")
     fun observeAll(): Flow<List<CoverageEntity>>
 
+    @Query("DELETE FROM sync_coverage WHERE endMs < :beforeMs")
+    suspend fun deleteEndedBefore(beforeMs: Long): Int
+
     @Query("DELETE FROM sync_coverage WHERE source = :source")
     suspend fun clear(source: String)
 

@@ -10,6 +10,10 @@ interface TreatmentDao {
     @Upsert
     suspend fun upsertAll(treatments: List<TreatmentEntity>)
 
+    /** Old treatments go, but profile switches stay: the profile in force at the start of a period and the profile history need them, and they are few. */
+    @Query("DELETE FROM treatments WHERE timestampMs < :beforeMs AND NOT (eventType = 'Profile Switch' OR (eventType = 'Note' AND rawJson LIKE '%profileJson%'))")
+    suspend fun deleteBefore(beforeMs: Long): Int
+
     @Query("SELECT * FROM treatments ORDER BY timestampMs")
     suspend fun all(): List<TreatmentEntity>
 

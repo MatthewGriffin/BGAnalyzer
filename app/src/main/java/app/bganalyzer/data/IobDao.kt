@@ -10,6 +10,9 @@ interface IobDao {
     @Upsert
     suspend fun upsertAll(samples: List<IobSampleEntity>)
 
+    @Query("DELETE FROM iob_samples WHERE timestampMs < :beforeMs")
+    suspend fun deleteBefore(beforeMs: Long): Int
+
     @Query("SELECT * FROM iob_samples ORDER BY timestampMs")
     suspend fun all(): List<IobSampleEntity>
 
