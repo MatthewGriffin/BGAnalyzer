@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import app.bganalyzer.ui.BackupScreen
 import app.bganalyzer.sync.BackgroundSync
+import app.bganalyzer.sync.StaleAlert
 import app.bganalyzer.ui.TabIcons
 import app.bganalyzer.ui.BackupViewModel
 import app.bganalyzer.ui.GlucoseScreen
@@ -124,7 +125,7 @@ class MainActivity : ComponentActivity() {
                     val autotuneDays by autotune.days.collectAsState()
                     val dayQuality by autotune.dayQuality.collectAsState()
                     Box(Modifier.padding(inner)) {
-                        AutotuneScreen(autotuneState, glucoseState.unit, autotuneDays, autotune::setDays, insulinPeak, syncState, autotune::setPeak, autotune::run, autotune::clear, dayQuality, autotune::excludeDay, autotune::restoreDay, autotune::excludeDays)
+                        AutotuneScreen(autotuneState, glucoseState.unit, autotuneDays, autotune::setDays, insulinPeak, syncState, autotune::setPeak, autotune::run, autotune::clear, dayQuality, autotune::excludeDay, autotune::restoreDay, autotune::excludeDays, onSync = { glucose.sync(30) })
                     }
                 } else if (tab == 2) {
                     val patternsState by patterns.state.collectAsState()
@@ -139,9 +140,19 @@ class MainActivity : ComponentActivity() {
                         BackupScreen(backupState, onSave = backup::save, onRestore = backup::restore)
                     }
                 } else Box(Modifier.padding(inner)) {
+                var staleOn by remember { mutableStateOf(StaleAlert.enabled(this@MainActivity)) }
+                val askNotifications = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
+                    staleOn = granted; StaleAlert.setEnabled(this@MainActivity, granted)
+                }
                 var bgSync by remember { mutableStateOf(BackgroundSync.enabled(this@MainActivity)) }
                 ConnectionScreen(
                     backgroundSync = bgSync,
+                    staleAlert = staleOn,
+                    onStaleAlert = { on ->
+                        if (!on) { staleOn = false; StaleAlert.setEnabled(this@MainActivity, false) }
+                        else if (android.os.Build.VERSION.SDK_INT >= 33) askNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                        else { staleOn = true; StaleAlert.setEnabled(this@MainActivity, true) }
+                    },
                     onBackgroundSync = { bgSync = it; BackgroundSync.setEnabled(this@MainActivity, it) },
                     uri = uri,
                     database = database,

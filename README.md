@@ -6,12 +6,14 @@ Android app that reads glucose and insulin data from a Nightscout site (uploaded
 
 ## What it does
 
-- **Overview:** glucose chart with insulin, carbs, basal and profile changes, and time in range.
-- **Autotune:** replays recent days (4 AM to 4 AM) against your insulin and carb records, with confidence per value, and lays the result out as tables ready to copy into a profile.
-- **Patterns:** trends only (glucose by time of day, post-meal rises, loop basal against profile, before/after profile changes). Days with bad data (for example a pump failure) can be excluded.
+- **Overview:** glucose chart you can touch to read any moment, time in range as one bar, day-by-day bars (tap a day for its own chart and numbers), a lows summary (how many, how long, what time of day), swing and CV, and treatments.
+- **Autotune:** replays recent days (4 AM to 4 AM) against your insulin and carb records. A "What to do now" card sums it up; tables give each hour's current and suggested basal with a reason and a confidence dot, and a chart compares the two. Sensitivity and carb ratio are only changed when there is enough evidence. It compares each run with the one before and can share the suggestions as plain text.
+- **Patterns:** trends only: glucose by time of day, post-meal rises, loop basal against profile, before/after comparisons for profile, site, insulin and sensor changes, and every past profile with its glucose and settings. Days with bad data (for example a pump failure) can be excluded.
 - **Data sources:** the Nightscout MongoDB database directly, or the Nightscout REST API (read-only, incremental).
-- **Background sync:** every 3 hours when online (can be switched off on the Connection tab).
+- **Background sync:** every 3 hours when online, with an optional alert if no glucose arrives for 2 hours (both can be switched off on the Connect tab).
 - **Backup:** encrypted backup and restore of everything the app saves.
+
+Screenshots are not included on purpose: they would show real glucose data.
 
 ## Build
 

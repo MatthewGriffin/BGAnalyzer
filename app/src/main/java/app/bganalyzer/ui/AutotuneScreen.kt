@@ -51,8 +51,9 @@ fun AutotuneScreen(
     onExcludeDay: (String, String) -> Unit,
     onRestoreDay: (String) -> Unit,
     onExcludeDays: (List<String>, String) -> Unit,
+    onSync: () -> Unit = {},
 ) {
-    ScreenScaffold(stringResource(R.string.autotune_title)) {
+    ScreenScaffold(stringResource(R.string.autotune_title), onRefresh = onSync, refreshing = sync is SyncState.Running) {
             if (sync is SyncState.Running) Text(stringResource(R.string.autotune_syncing), color = MaterialTheme.colorScheme.tertiary)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Dropdown(
@@ -86,7 +87,7 @@ private fun hourLabel(h: Int) = String.format(Locale.US, "%02d:00", h % 24)
 @Composable
 private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClear: () -> Unit) {
     val a: AutotuneAdvice = s.advice
-    ActionSummary(a)
+    ActionSummary(a, s.previous)
     SectionCard(stringResource(R.string.autotune_result_title)) {
         Text(stringResource(R.string.autotune_days_used, a.daysTuned, s.days), style = MaterialTheme.typography.bodyMedium)
         if (s.usedFirst != null && s.usedLast != null) {
@@ -161,6 +162,7 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
                         h.heldReason?.let { stringResource(R.string.autotune_held, rate(AutotuneAdvisor.roundToPumpStep(h.tuned)), it) },
                         if (h.heldReason == null && change >= 10) stringResource(R.string.autotune_why_up) else null,
                         if (h.heldReason == null && change <= -10) stringResource(R.string.autotune_why_down) else null,
+                        s.previous?.rates?.getOrNull(h.hour)?.takeIf { kotlin.math.abs(it - sug) >= 0.1 }?.let { stringResource(R.string.autotune_last_run_row, rate(it)) },
                         if (h.limited && h.heldReason == null) stringResource(R.string.autotune_limited) else null,
                         if (h.unsteady && h.swingMgdlPerHour != null) stringResource(R.string.autotune_unsteady, unit.format(h.swingMgdlPerHour), unit.label) else null,
                     ).joinToString(" ").ifEmpty { null },
@@ -174,12 +176,20 @@ private fun AutotuneResultCards(s: AutotuneState.Done, unit: GlucoseUnit, onClea
         }
     }
 
-    TextButton(onClick = onClear) { Text(stringResource(R.string.autotune_clear)) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val shareText = shareText(a, unit)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = {
+            val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, shareText)
+            context.startActivity(android.content.Intent.createChooser(send, null))
+        }) { Text(stringResource(R.string.autotune_share)) }
+        TextButton(onClick = onClear) { Text(stringResource(R.string.autotune_clear)) }
+    }
 }
 
 /** The answer to "what should I do": one headline and counts, from the hourly suggestions. Advice only: nothing is changed. */
 @Composable
-private fun ActionSummary(a: AutotuneAdvice) {
+private fun ActionSummary(a: AutotuneAdvice, previous: PreviousRun?) {
     val rows = a.hours.map { h ->
         val sug = AutotuneAdvisor.roundToPumpStep(h.suggested)
         h to (if (h.current > 0) (sug / h.current - 1) * 100 else 0.0)
@@ -201,9 +211,31 @@ private fun ActionSummary(a: AutotuneAdvice) {
         TileRow {
             StatTile(raised.toString(), stringResource(R.string.autotune_sum_raised))
             StatTile(lowered.toString(), stringResource(R.string.autotune_sum_lowered))
+        }
+        TileRow {
             StatTile(held.toString(), stringResource(R.string.autotune_sum_held))
             StatTile(lowConf.toString(), stringResource(R.string.autotune_sum_low_conf))
         }
+        if (previous != null) {
+            val moved = a.hours.count { kotlin.math.abs(AutotuneAdvisor.roundToPumpStep(it.suggested) - previous.rates[it.hour]) >= 0.1 }
+            val whenText = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(previous.atMs))
+            Text(stringResource(if (moved == 0) R.string.autotune_stable else R.string.autotune_moved, whenText, moved), style = MaterialTheme.typography.bodyMedium)
+        }
         Text(stringResource(R.string.autotune_responsibility), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+/** The suggestions as plain text a person can paste into notes or send to a care team. */
+private fun shareText(a: AutotuneAdvice, unit: GlucoseUnit): String = buildString {
+    appendLine("BGAnalyzer Autotune suggestion (advice only, not applied anywhere)")
+    appendLine("Days used: ${a.daysTuned}")
+    appendLine("Insulin sensitivity ${unit.label}/U: now ${unit.format(a.currentIsf)}, suggested ${unit.format(a.tunedIsf)}")
+    appendLine("Carb ratio g/U: now ${String.format(Locale.US, "%.1f", a.currentCarbRatio)}, suggested ${String.format(Locale.US, "%.1f", a.tunedCarbRatio)}")
+    appendLine()
+    appendLine("Hour  Now  Suggested  Confidence")
+    a.hours.forEach { h ->
+        appendLine("${hourLabel(h.hour)}  ${String.format(Locale.US, "%.2f", h.current)}  ${String.format(Locale.US, "%.2f", AutotuneAdvisor.roundToPumpStep(h.suggested))}  ${h.confidence.name.lowercase()}")
+    }
+    appendLine()
+    append("Check any change with your diabetes care team before using it.")
 }

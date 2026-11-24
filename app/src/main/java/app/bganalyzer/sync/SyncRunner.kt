@@ -34,12 +34,17 @@ class SyncRunner(private val context: Context) {
             RestSyncSource(rest.url, auth).use { NightscoutSync(db).run(it, days, onProgress, deep) }
         } else NightscoutSync(db).run(store.uri, store.database, days, onProgress, deep)
         if (deep) prefs.edit().putLong(KEY_DEEP, now).apply()
+        prefs.edit().putLong(KEY_LAST, now).apply()
         return result
     }
 
-    private companion object {
-        const val KEY_DEEP = "last_deep_gap_check"
+    companion object {
+        private const val KEY_DEEP = "last_deep_gap_check"
+        private const val KEY_LAST = "last_sync_ms"
+
+        /** When a sync last finished (button or background), or 0. */
+        fun lastSyncMs(context: Context): Long = context.getSharedPreferences("view_settings", Context.MODE_PRIVATE).getLong(KEY_LAST, 0L)
         /** The button and the background sync never run at the same time. */
-        val lock = Mutex()
+        private val lock = Mutex()
     }
 }

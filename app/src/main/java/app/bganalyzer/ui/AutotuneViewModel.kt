@@ -34,12 +34,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.time.ZoneId
 
+/** The suggestions of an earlier run (24 pump-rounded hourly rates) and when it was made. */
+data class PreviousRun(val atMs: Long, val rates: List<Double>)
+
 data class DayQualityState(val excluded: List<ExcludedDayEntity> = emptyList(), val noInsulinDays: List<String> = emptyList())
 
 sealed interface AutotuneState {
     data object Idle : AutotuneState
     data class Running(val day: Int, val of: Int) : AutotuneState
-    data class Done(val advice: AutotuneAdvice, val result: AutotuneResult, val days: Int, val profileChangeMs: Long? = null, val usedFirst: java.time.LocalDate? = null, val usedLast: java.time.LocalDate? = null) : AutotuneState
+    data class Done(val advice: AutotuneAdvice, val result: AutotuneResult, val days: Int, val profileChangeMs: Long? = null, val usedFirst: java.time.LocalDate? = null, val usedLast: java.time.LocalDate? = null, val previous: PreviousRun? = null) : AutotuneState
     data class Failed(val message: String) : AutotuneState
 }
 
@@ -113,10 +116,30 @@ class AutotuneViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun compute(days: Int): AutotuneState =
         when (val r = AutotuneFromDb.run(db, days, _peak.value, System.currentTimeMillis()) { d, n -> _state.value = AutotuneState.Running(d, n) }) {
             is AutotuneFromDb.Outcome.Failed -> AutotuneState.Failed(r.message)
-            is AutotuneFromDb.Outcome.Done -> AutotuneState.Done(r.advice, r.result, days, r.profileChangeMs, r.usedFirst, r.usedLast)
+            is AutotuneFromDb.Outcome.Done -> AutotuneState.Done(r.advice, r.result, days, r.profileChangeMs, r.usedFirst, r.usedLast, rememberRun(r.advice))
         }
 
+    /**
+     * Saves this run's suggestions and returns the run before it, so the screen can show whether the numbers move.
+     * Runs less than 6 hours apart count as the same run (the later replaces the earlier).
+     */
+    private fun rememberRun(advice: AutotuneAdvice): PreviousRun? {
+        val now = System.currentTimeMillis()
+        fun load(prefix: String): PreviousRun? {
+            val at = prefs.getLong(prefix + "_ms", 0L)
+            val rates = prefs.getString(prefix + "_rates", null)?.split(',')?.mapNotNull { it.toDoubleOrNull() }
+            return if (at > 0 && rates?.size == 24) PreviousRun(at, rates) else null
+        }
+        fun save(prefix: String, r: PreviousRun?) { prefs.edit().apply { if (r == null) { remove(prefix + "_ms"); remove(prefix + "_rates") } else { putLong(prefix + "_ms", r.atMs); putString(prefix + "_rates", r.rates.joinToString(",")) } }.apply() }
+        val rates = advice.hours.sortedBy { it.hour }.map { AutotuneAdvisor.roundToPumpStep(it.suggested) }
+        val current = load("run_cur")
+        val previous = if (current != null && now - current.atMs > SAME_RUN_MS) current.also { save("run_prev", it) } else load("run_prev")
+        save("run_cur", PreviousRun(now, rates))
+        return previous
+    }
+
     companion object {
+        private const val SAME_RUN_MS = 6L * 3_600_000L
         const val KEY_PEAK = "insulin_peak"
         const val KEY_DAYS = "autotune_days"
         /** Peak times AAPS uses: rapid-acting 75, ultra-rapid (Fiasp) 55, Lyumjev 45. */
