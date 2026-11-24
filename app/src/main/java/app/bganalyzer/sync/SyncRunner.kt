@@ -35,6 +35,8 @@ class SyncRunner(private val context: Context) {
         } else NightscoutSync(db).run(store.uri, store.database, days, onProgress, deep)
         if (deep) prefs.edit().putLong(KEY_DEEP, now).apply()
         prefs.edit().putLong(KEY_LAST, now).apply()
+        // keep the database a steady size: nothing older than the longest period the app can show
+        app.bganalyzer.data.Retention.prune(db, now)
         return result
     }
 

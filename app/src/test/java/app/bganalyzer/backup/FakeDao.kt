@@ -11,6 +11,7 @@ class FakeDao(initial: List<GlucoseReadingEntity> = emptyList()) : GlucoseReadin
 
     override suspend fun upsertAll(readings: List<GlucoseReadingEntity>) { readings.forEach { rows[it.timestampMs] = it } }
     override fun observeCount(): Flow<Int> = flowOf(rows.size)
+    override suspend fun deleteBefore(beforeMs: Long): Int { val old = rows.keys.filter { it < beforeMs }; old.forEach { rows.remove(it) }; return old.size }
     override suspend fun all() = rows.values.toList()
     override suspend fun newestTimestamp() = rows.keys.maxOrNull()
     override suspend fun timestampsSince(fromMs: Long) = rows.keys.filter { it >= fromMs }
@@ -21,6 +22,7 @@ class FakeDao(initial: List<GlucoseReadingEntity> = emptyList()) : GlucoseReadin
 class FakeTreatmentDao(initial: List<app.bganalyzer.data.TreatmentEntity> = emptyList()) : app.bganalyzer.data.TreatmentDao {
     val rows = initial.associateBy { it.id }.toMutableMap()
     override suspend fun upsertAll(treatments: List<app.bganalyzer.data.TreatmentEntity>) { treatments.forEach { rows[it.id] = it } }
+    override suspend fun deleteBefore(beforeMs: Long): Int { val old = rows.values.filter { it.timestampMs < beforeMs && !app.bganalyzer.domain.ProfileTimeline.isProfileEvent(it) }; old.forEach { rows.remove(it.id) }; return old.size }
     override suspend fun all() = rows.values.sortedBy { it.timestampMs }
     override fun observeCount(): Flow<Int> = flowOf(rows.size)
     override suspend fun newestTimestamp() = rows.values.maxOfOrNull { it.timestampMs }
@@ -42,6 +44,7 @@ class FakeProfileDao(initial: List<app.bganalyzer.data.ProfileEntity> = emptyLis
 class FakeIobDao(initial: List<app.bganalyzer.data.IobSampleEntity> = emptyList()) : app.bganalyzer.data.IobDao {
     val rows = initial.associateBy { it.id }.toMutableMap()
     override suspend fun upsertAll(samples: List<app.bganalyzer.data.IobSampleEntity>) { samples.forEach { rows[it.id] = it } }
+    override suspend fun deleteBefore(beforeMs: Long): Int { val old = rows.values.filter { it.timestampMs < beforeMs }; old.forEach { rows.remove(it.id) }; return old.size }
     override suspend fun all() = rows.values.sortedBy { it.timestampMs }
     override fun observeSince(fromMs: Long): Flow<List<app.bganalyzer.data.IobSampleEntity>> = flowOf(all2().filter { it.timestampMs >= fromMs })
     override suspend fun timestampsSince(fromMs: Long) = all2().filter { it.timestampMs >= fromMs }.map { it.timestampMs }

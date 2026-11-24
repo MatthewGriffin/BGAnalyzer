@@ -10,6 +10,9 @@ interface GlucoseReadingDao {
     @Upsert
     suspend fun upsertAll(readings: List<GlucoseReadingEntity>)
 
+    @Query("DELETE FROM glucose_readings WHERE timestampMs < :beforeMs")
+    suspend fun deleteBefore(beforeMs: Long): Int
+
     @Query("SELECT COUNT(*) FROM glucose_readings")
     fun observeCount(): Flow<Int>
 
