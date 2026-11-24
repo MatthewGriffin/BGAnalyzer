@@ -76,6 +76,8 @@ data class GlucoseUiState(
     val emptyDays: List<EmptyRange> = emptyList(),
     /** Every profile change known (switches with their modifier), oldest first; the chart marks those inside the period. */
     val profiles: List<EffectiveProfile> = emptyList(),
+    /** The zone days are cut in (see ZoneResolver). */
+    val zoneId: String = "",
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -119,6 +121,7 @@ class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
                     bolusInsulinTotal = treatments.sumOf { (it.insulin ?: 0.0).coerceAtLeast(0.0) },
                     basal = BasalTimeline.build(all, ProfileResolver(entries, profiles), from, to, zone),
                     profiles = entries,
+                    zoneId = zone.id,
                     iob = iob,
                     unsyncedMs = SyncPlanner.unsyncedMs(coverage.map { it.source to Span(it.startMs, it.endMs) }, Span(from, to)),
                     emptyDays = run {

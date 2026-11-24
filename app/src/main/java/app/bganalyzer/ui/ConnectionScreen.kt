@@ -60,6 +60,8 @@ fun ConnectionScreen(
     rest: RestUi = RestUi(),
     backgroundSync: Boolean = true,
     onBackgroundSync: (Boolean) -> Unit = {},
+    staleAlert: Boolean = false,
+    onStaleAlert: (Boolean) -> Unit = {},
 ) {
     ScreenScaffold(stringResource(R.string.connection_title)) {
         SectionCard(stringResource(R.string.connection_card_source)) {
@@ -162,6 +164,13 @@ fun ConnectionScreen(
                         Text(stringResource(R.string.background_sync_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     androidx.compose.material3.Switch(checked = backgroundSync, onCheckedChange = onBackgroundSync)
+                }
+                androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text(stringResource(R.string.stale_alert_title), style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(R.string.stale_alert_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    androidx.compose.material3.Switch(checked = staleAlert && backgroundSync, enabled = backgroundSync, onCheckedChange = onStaleAlert)
                 }
             }
         }

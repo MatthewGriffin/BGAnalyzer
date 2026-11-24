@@ -45,7 +45,7 @@ fun PatternsScreen(
     onBlockHours: (Int) -> Unit,
     onSync: () -> Unit,
 ) {
-    ScreenScaffold(stringResource(R.string.patterns_title)) {
+    ScreenScaffold(stringResource(R.string.patterns_title), onRefresh = if (hasConnection) onSync else null, refreshing = sync is SyncState.Running) {
             if (state.unsyncedMs > 60 * 60 * 1000L && sync !is SyncState.Running) {
                 Text(stringResource(R.string.sync_unsynced_notice), color = MaterialTheme.colorScheme.tertiary)
             }
@@ -248,9 +248,7 @@ private fun ChangesTimeline(state: PatternsState, unit: GlucoseUnit) {
                 Text(fmt.format(java.util.Date(e.timeMs)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 Text(e.label, style = MaterialTheme.typography.titleSmall)
                 e.basalBefore?.let { Text(stringResource(R.string.changes_basal, rate(it), rate(e.basalAfter ?: it)), style = MaterialTheme.typography.bodySmall) }
-                e.before?.let { PeriodLine(stringResource(R.string.changes_before), it); StabilityLine(it.swingMgdlPerHour, it.timeInRange.cvPct, unit) }
-                e.after?.let { PeriodLine(stringResource(R.string.changes_after), it); StabilityLine(it.swingMgdlPerHour, it.timeInRange.cvPct, unit) }
-                if (e.before != null && e.after != null) StabilityVerdict(e.before, e.after)
+                if (e.before != null && e.after != null) BeforeAfter(e.before, e.after, unit)
             }
         }
     }
@@ -345,4 +343,31 @@ private fun ProfileSettingsTable(p: app.bganalyzer.domain.EffectiveProfile, unit
     TableRow(listOf(stringResource(R.string.autotune_total), rate(app.bganalyzer.domain.ChangeComparison.totalBasal(p.basal)), "", ""), w, header = true)
     st.diaHours?.let { Text(stringResource(R.string.history_dia, String.format(Locale.getDefault(), "%.1f", it)), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp)) }
     if (st.isf.isEmpty() && st.carbRatio.isEmpty()) Text(stringResource(R.string.history_no_settings), style = MaterialTheme.typography.bodySmall)
+}
+
+/** Two periods side by side with a range bar each, then one line saying what moved. */
+@Composable
+private fun BeforeAfter(before: app.bganalyzer.domain.PeriodSummary, after: app.bganalyzer.domain.PeriodSummary, unit: GlucoseUnit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        listOf(stringResource(R.string.changes_before) to before, stringResource(R.string.changes_after) to after).forEach { (label, p) ->
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(R.string.changes_period_head, label, String.format(Locale.getDefault(), "%.1f", p.days)), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                RangeBar(p.timeInRange)
+                Text(stringResource(R.string.changes_in_range, pct(p.timeInRange.inRangePct)), style = MaterialTheme.typography.titleSmall, color = glucoseColor(GlucoseBand.IN_RANGE))
+                Text(stringResource(R.string.changes_low_high, pct(p.timeInRange.lowPct + p.timeInRange.veryLowPct), pct(p.timeInRange.highPct + p.timeInRange.veryHighPct)), style = MaterialTheme.typography.bodySmall)
+                p.swingMgdlPerHour?.let { Text(stringResource(R.string.changes_swing_short, unit.format(it), unit.label), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+        }
+    }
+    val delta = after.timeInRange.inRangePct - before.timeInRange.inRangePct
+    val lowDelta = (after.timeInRange.lowPct + after.timeInRange.veryLowPct) - (before.timeInRange.lowPct + before.timeInRange.veryLowPct)
+    Text(
+        when {
+            delta >= 3 -> stringResource(R.string.changes_verdict_more, pct(delta))
+            delta <= -3 -> stringResource(R.string.changes_verdict_less, pct(-delta))
+            else -> stringResource(R.string.changes_verdict_same)
+        } + if (lowDelta >= 2) " " + stringResource(R.string.changes_verdict_more_lows, pct(lowDelta)) else "",
+        style = MaterialTheme.typography.bodyMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+    )
+    StabilityVerdict(before, after)
 }

@@ -17,6 +17,7 @@ class BackgroundSyncWorker(context: Context, params: WorkerParameters) : Corouti
         if (!runner.hasConnection) return Result.success()
         // A failed run is simply tried again at the next interval.
         runCatching { runner.run(BackgroundSync.DAYS) }
+        runCatching { StaleAlert.checkAndNotify(applicationContext) }
         return Result.success()
     }
 }

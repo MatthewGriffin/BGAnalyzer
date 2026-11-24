@@ -1,6 +1,10 @@
 package app.bganalyzer.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,14 +55,14 @@ fun GlucoseScreen(
 ) {
     val ranges = GlucoseRanges()
     val unit = state.unit
-    ScreenScaffold(stringResource(R.string.glucose_title)) {
+    ScreenScaffold(stringResource(R.string.glucose_title), onRefresh = if (hasConnection) onSync else null, refreshing = sync is SyncState.Running) {
             if (!hasConnection) Text(stringResource(R.string.sync_need_connection))
             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f)) {
                     when (sync) {
                         is SyncState.Running -> Text(stringResource(R.string.sync_running, sync.stored), style = MaterialTheme.typography.bodySmall)
                         is SyncState.Failed -> Text(stringResource(R.string.sync_failed), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall)
-                        else -> Text(stringResource(R.string.sync_status_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        else -> Text(lastSyncedText(sync), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 androidx.compose.material3.FilledTonalButton(onClick = onSync, enabled = hasConnection && sync !is SyncState.Running) {
@@ -120,6 +124,8 @@ fun GlucoseScreen(
                     }
                     Text(stringResource(R.string.tir_bands_note, unit.format(ranges.veryLowBelow), unit.format(ranges.lowBelow), unit.format(ranges.highAbove), unit.format(ranges.veryHighAbove)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                DailySection(state)
+                LowsSection(state)
                 val swing = androidx.compose.runtime.remember(state.points) { app.bganalyzer.domain.Swing.of(state.points).perHour }
                 TileRow {
                     StatTile(unit.format(tir.meanMgdl), stringResource(R.string.tile_average, unit.label))
@@ -183,5 +189,127 @@ internal fun <T> Dropdown(
                 DropdownMenuItem(text = { Text(text(option)) }, onClick = { onSelect(option); expanded = false })
             }
         }
+    }
+}
+
+/** "Last synced 14 min ago", or the hint when the app has never synced. Recomputed whenever a sync changes state. */
+@Composable
+internal fun lastSyncedText(sync: SyncState): String {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val last = androidx.compose.runtime.remember(sync) { app.bganalyzer.sync.SyncRunner.lastSyncMs(context) }
+    if (last == 0L) return stringResource(R.string.sync_status_hint)
+    val ago = android.text.format.DateUtils.getRelativeTimeSpanString(last, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS).toString()
+    return stringResource(R.string.sync_last, ago)
+}
+
+private fun zoneOf(state: GlucoseUiState): java.time.ZoneId = runCatching { java.time.ZoneId.of(state.zoneId) }.getOrDefault(java.time.ZoneId.systemDefault())
+
+/** One bar per day: the share of readings in range. Tap a day to see it in detail. */
+@Composable
+private fun DailySection(state: GlucoseUiState) {
+    if (state.days < 7) return
+    val zone = zoneOf(state)
+    val days = androidx.compose.runtime.remember(state.points, state.fromMs, state.toMs) { app.bganalyzer.domain.DailyRange.of(state.points, zone, state.fromMs, state.toMs) }
+    var open by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    SectionCard(stringResource(R.string.daily_title)) {
+        Text(stringResource(R.string.daily_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val fmt = androidx.compose.runtime.remember { java.time.format.DateTimeFormatter.ofPattern("d/M") }
+        Row(Modifier.fillMaxWidth().height(110.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = androidx.compose.ui.Alignment.Bottom) {
+            days.forEach { d ->
+                val frac = (d.timeInRange.inRangePct / 100).toFloat().coerceIn(0.03f, 1f)
+                Column(
+                    Modifier.weight(1f).fillMaxHeight().clickable(enabled = d.readings > 0) { open = d.date.toString() },
+                    verticalArrangement = Arrangement.Bottom, horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                ) {
+                    if (d.readings > 0) androidx.compose.foundation.layout.Box(
+                        Modifier.fillMaxWidth().fillMaxHeight(frac).background(
+                            glucoseColor(GlucoseBand.IN_RANGE).copy(alpha = if (d.complete) 1f else 0.4f),
+                            androidx.compose.foundation.shape.RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp),
+                        ),
+                    )
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(days.first().date.format(fmt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(days.last().date.format(fmt), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        val good = days.filter { it.complete }
+        if (good.size >= 2) {
+            val half = good.size / 2
+            val early = good.take(half).map { it.timeInRange.inRangePct }.average()
+            val late = good.drop(good.size - half).map { it.timeInRange.inRangePct }.average()
+            val diff = late - early
+            Text(
+                when {
+                    diff >= 3 -> stringResource(R.string.daily_trend_up, String.format(Locale.getDefault(), "%.0f", diff))
+                    diff <= -3 -> stringResource(R.string.daily_trend_down, String.format(Locale.getDefault(), "%.0f", -diff))
+                    else -> stringResource(R.string.daily_trend_flat)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+    open?.let { iso -> days.firstOrNull { it.date.toString() == iso }?.let { DayDialog(state, it, zone) { open = null } } }
+}
+
+/** The chosen day on its own: time in range, lows, and the same touch-through chart as the Overview. */
+@Composable
+private fun DayDialog(state: GlucoseUiState, day: app.bganalyzer.domain.DayStat, zone: java.time.ZoneId, onClose: () -> Unit) {
+    val from = day.date.atStartOfDay(zone).toInstant().toEpochMilli()
+    val to = day.date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+    val dayState = androidx.compose.runtime.remember(state, day) {
+        val pts = state.points.filter { it.timestampMs in from until to }
+        val tr = state.treatments.filter { it.timestampMs in from until to }
+        state.copy(
+            days = 1, points = pts, fromMs = from, toMs = to, treatments = tr, timeInRange = day.timeInRange,
+            mealCount = app.bganalyzer.domain.PostMeal.meals(tr).size,
+            carbsTotal = app.bganalyzer.domain.PostMeal.meals(tr).sumOf { it.carbs },
+            bolusInsulinTotal = tr.sumOf { (it.insulin ?: 0.0).coerceAtLeast(0.0) },
+        )
+    }
+    val unit = state.unit
+    val lows = androidx.compose.runtime.remember(dayState) { app.bganalyzer.domain.Lows.summarize(dayState.points, zone) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onClose,
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onClose) { Text(stringResource(R.string.day_close)) } },
+        title = { Text(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.FULL).format(day.date)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                GlucoseCharts(dayState)
+                RangeBar(day.timeInRange)
+                TileRow {
+                    StatTile(String.format(Locale.getDefault(), "%.0f%%", day.timeInRange.inRangePct), stringResource(R.string.day_in_range), glucoseColor(GlucoseBand.IN_RANGE))
+                    StatTile(unit.format(day.timeInRange.meanMgdl), stringResource(R.string.tile_average, unit.label))
+                    StatTile(lows.count.toString(), stringResource(R.string.lows_episodes))
+                }
+                TileRow {
+                    StatTile(String.format(Locale.getDefault(), "%.0f", dayState.carbsTotal), stringResource(R.string.day_carbs))
+                    StatTile(String.format(Locale.getDefault(), "%.1f", dayState.bolusInsulinTotal), stringResource(R.string.day_bolus))
+                    lows.lowestMgdl?.let { StatTile(unit.format(it), stringResource(R.string.lows_lowest), glucoseColor(GlucoseBand.LOW)) }
+                }
+            }
+        },
+    )
+}
+
+/** How often glucose went low, for how long, and at what time of day. */
+@Composable
+private fun LowsSection(state: GlucoseUiState) {
+    val zone = zoneOf(state)
+    val lows = androidx.compose.runtime.remember(state.points) { app.bganalyzer.domain.Lows.summarize(state.points, zone) }
+    SectionCard(stringResource(R.string.lows_title)) {
+        if (lows.count == 0) {
+            Text(stringResource(R.string.lows_none), style = MaterialTheme.typography.bodyMedium)
+            return@SectionCard
+        }
+        TileRow {
+            StatTile(lows.count.toString(), stringResource(R.string.lows_episodes), glucoseColor(GlucoseBand.LOW))
+            StatTile(stringResource(R.string.lows_minutes_value, lows.averageMinutes), stringResource(R.string.lows_average_length))
+            StatTile(state.unit.format(lows.lowestMgdl ?: 0.0), stringResource(R.string.lows_lowest))
+        }
+        lows.worstHour?.let { h -> Text(stringResource(R.string.lows_worst_hour, String.format(Locale.US, "%02d:00", h), String.format(Locale.US, "%02d:00", (h + 1) % 24)), style = MaterialTheme.typography.bodyMedium) }
+        if (lows.veryLowEpisodes > 0) Text(stringResource(R.string.lows_very_low, lows.veryLowEpisodes), style = MaterialTheme.typography.bodyMedium, color = glucoseColor(GlucoseBand.VERY_LOW))
+        Text(stringResource(R.string.lows_note), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

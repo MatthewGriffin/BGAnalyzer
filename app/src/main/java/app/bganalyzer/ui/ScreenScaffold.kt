@@ -2,6 +2,7 @@ package app.bganalyzer.ui
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
@@ -23,14 +24,18 @@ import androidx.compose.ui.unit.dp
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ScreenScaffold(title: String, content: @Composable ColumnScope.() -> Unit) {
+internal fun ScreenScaffold(title: String, onRefresh: (() -> Unit)? = null, refreshing: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     val scroll = rememberSaveable(saver = ScrollState.Saver) { ScrollState(0) }
     // The bottom bar and the status bar are handled by the activity and the title bar, so no extra insets here.
     Scaffold(contentWindowInsets = WindowInsets(0, 0, 0, 0), topBar = { TopAppBar(title = { Text(title) }) }) { padding ->
-        Column(
-            Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(scroll),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            content = content,
-        )
+        val column: @Composable () -> Unit = {
+            Column(
+                Modifier.fillMaxSize().padding(16.dp).verticalScroll(scroll),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                content = content,
+            )
+        }
+        if (onRefresh == null) Box(Modifier.padding(padding)) { column() }
+        else androidx.compose.material3.pulltorefresh.PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = Modifier.padding(padding)) { column() }
     }
 }
